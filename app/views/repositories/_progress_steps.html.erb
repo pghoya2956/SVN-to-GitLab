@@ -1,0 +1,150 @@
+<div class="progress-steps mb-4 px-0">
+  <div class="card shadow-sm">
+    <div class="card-body py-4">
+      <div class="d-flex justify-content-between position-relative">
+        <% 
+          steps = [
+            { 
+              title: "SVN 구조 감지", 
+              icon: "bi-diagram-3",
+              completed: repository.svn_structure.present?,
+              active: repository.svn_structure.blank?
+            },
+            { 
+              title: "전략 설정", 
+              icon: "bi-sliders",
+              completed: repository.migration_type.present?,
+              active: repository.svn_structure.present? && repository.migration_type.blank?
+            },
+            { 
+              title: "GitLab 프로젝트", 
+              icon: "bi-gitlab",
+              completed: repository.gitlab_project_id.present?,
+              active: repository.migration_type.present? && repository.gitlab_project_id.blank?
+            },
+            { 
+              title: "마이그레이션", 
+              icon: "bi-rocket-takeoff",
+              completed: repository.initial_migration_completed?,
+              active: repository.gitlab_project_id.present? && !repository.initial_migration_completed?
+            }
+          ]
+        %>
+        
+        <div class="progress-line"></div>
+        
+        <% steps.each_with_index do |step, index| %>
+          <div class="progress-step <%= 'completed' if step[:completed] %> <%= 'active' if step[:active] %>">
+            <div class="step-number">
+              <% if step[:completed] %>
+                <i class="bi bi-check-lg"></i>
+              <% else %>
+                <%= index + 1 %>
+              <% end %>
+            </div>
+            <div class="step-info">
+              <i class="<%= step[:icon] %> me-1"></i>
+              <span><%= step[:title] %></span>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .progress-steps {
+    padding: 0;
+  }
+  
+  .progress-steps .card {
+    border: 1px solid #e9ecef;
+  }
+  
+  .progress-line {
+    position: absolute;
+    top: 20px;
+    left: 5%;
+    right: 5%;
+    height: 2px;
+    background: #e9ecef;
+    z-index: 0;
+  }
+  
+  .progress-step {
+    position: relative;
+    text-align: center;
+    flex: 1;
+    z-index: 1;
+  }
+  
+  .step-number {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #e9ecef;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+    transition: all 0.3s ease;
+  }
+  
+  .step-info {
+    font-size: 0.875rem;
+    color: #6c757d;
+    white-space: nowrap;
+  }
+  
+  .progress-step.completed .step-number {
+    background: #198754;
+    border-color: #198754;
+    color: white;
+  }
+  
+  .progress-step.completed .step-info {
+    color: #198754;
+    font-weight: 500;
+  }
+  
+  .progress-step.active .step-number {
+    background: #0d6efd;
+    border-color: #0d6efd;
+    color: white;
+    animation: pulse 2s infinite;
+  }
+  
+  .progress-step.active .step-info {
+    color: #0d6efd;
+    font-weight: 600;
+  }
+  
+  @keyframes pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.4);
+    }
+    70% {
+      box-shadow: 0 0 0 10px rgba(13, 110, 253, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
+    }
+  }
+  
+  /* 완료된 단계 사이의 라인 */
+  .progress-step.completed + .progress-step.completed::before,
+  .progress-step.completed + .progress-step.active::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: -50%;
+    right: 50%;
+    height: 2px;
+    background: #198754;
+    z-index: -1;
+  }
+</style>

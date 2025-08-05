@@ -3,3 +3,6 @@
 // ./bin/rails generate stimulus controllerName
 
 import { application } from "./application"
+
+import SvnDetectorController from "./svn_detector_controller"
+application.register("svn-detector", SvnDetectorController)

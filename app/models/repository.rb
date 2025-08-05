@@ -74,6 +74,19 @@ class Repository < ApplicationRecord
     jobs.where(job_type: 'incremental_sync').completed.order(completed_at: :desc).first
   end
   
+  # Helper methods for SVN structure
+  def trunk_path
+    svn_structure&.dig('trunk') || svn_structure&.dig(:trunk)
+  end
+  
+  def branches_path
+    svn_structure&.dig('branches') || svn_structure&.dig(:branches)
+  end
+  
+  def tags_path
+    svn_structure&.dig('tags') || svn_structure&.dig(:tags)
+  end
+  
   # Set password (encrypt before saving)
   def password=(value)
     # In production, properly encrypt the password

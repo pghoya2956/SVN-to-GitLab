@@ -70,6 +70,14 @@ class RepositoriesController < ApplicationController
   # GET /repositories/1/edit_strategy
   def edit_strategy
     @strategy_service = Repositories::MigrationStrategyService.new(@repository)
+    
+    # Convert Array format to String format for the form
+    if @repository.authors_mapping.is_a?(Array)
+      authors_text = @repository.authors_mapping.map do |author|
+        "#{author['svn_name']} = #{author['git_name']} <#{author['git_email']}>"
+      end.join("\n")
+      @repository.authors_mapping = authors_text
+    end
   end
 
   # PATCH /repositories/1/update_strategy
@@ -121,14 +129,34 @@ class RepositoriesController < ApplicationController
         authors_mapping: result[:authors]
       )
       
+      # Prepare response data
+      response_data = {
+        success: true,
+        structure: result[:structure],
+        authors: result[:authors],
+        stats: result[:stats],
+        message: "SVN 구조가 성공적으로 감지되었습니다. #{result[:structure][:layout]} 레이아웃과 #{result[:authors].size}명의 작성자를 찾았습니다."
+      }
+      
       respond_to do |format|
-        format.json { render json: result }
-        format.html { redirect_to @repository, notice: "SVN structure detected successfully. Found #{result[:structure][:layout]} layout with #{result[:authors].size} authors." }
+        format.json { render json: response_data }
+        format.html { redirect_to @repository, notice: response_data[:message] }
       end
     else
+      error_message = case result[:error]
+      when /authentication/i
+        "SVN 저장소 인증에 실패했습니다. 인증 정보를 확인해주세요."
+      when /not found/i, /does not exist/i
+        "SVN URL이 올바르지 않거나 접근할 수 없습니다."
+      when /timeout/i
+        "연결 시간이 초과되었습니다. 네트워크 상태를 확인해주세요."
+      else
+        result[:error]
+      end
+      
       respond_to do |format|
-        format.json { render json: { error: result[:error] }, status: :unprocessable_entity }
-        format.html { redirect_to @repository, alert: "Failed to detect SVN structure: #{result[:error]}" }
+        format.json { render json: { success: false, error: error_message }, status: :unprocessable_entity }
+        format.html { redirect_to @repository, alert: "SVN 구조 감지 실패: #{error_message}" }
       end
     end
   end

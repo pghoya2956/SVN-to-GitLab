@@ -77,21 +77,39 @@ module Repositories
       return {} if @repository.authors_mapping.blank?
       
       mapping = {}
-      @repository.authors_mapping.each_line do |line|
-        line = line.strip
-        next if line.empty? || line.start_with?('#')
-        
-        parts = line.split('=', 2)
-        if parts.length == 2
-          svn_author = parts[0].strip
-          git_author = parts[1].strip
-          
-          # Validate git author format
-          unless git_author.match?(/^.+ <.+@.+>$/)
-            raise "Invalid Git author format for '#{svn_author}'. Expected: 'Name <email@example.com>'"
+      
+      # Handle both Array and String formats
+      if @repository.authors_mapping.is_a?(Array)
+        # Format from SvnStructureDetector
+        @repository.authors_mapping.each do |author|
+          if author.is_a?(Hash)
+            svn_name = author['svn_name'] || author[:svn_name]
+            git_name = author['git_name'] || author[:git_name]
+            git_email = author['git_email'] || author[:git_email]
+            
+            if svn_name && git_name && git_email
+              mapping[svn_name] = "#{git_name} <#{git_email}>"
+            end
           end
+        end
+      elsif @repository.authors_mapping.is_a?(String)
+        # Original string format
+        @repository.authors_mapping.each_line do |line|
+          line = line.strip
+          next if line.empty? || line.start_with?('#')
           
-          mapping[svn_author] = git_author
+          parts = line.split('=', 2)
+          if parts.length == 2
+            svn_author = parts[0].strip
+            git_author = parts[1].strip
+            
+            # Validate git author format
+            unless git_author.match?(/^.+ <.+@.+>$/)
+              raise "Invalid Git author format for '#{svn_author}'. Expected: 'Name <email@example.com>'"
+            end
+            
+            mapping[svn_author] = git_author
+          end
         end
       end
       

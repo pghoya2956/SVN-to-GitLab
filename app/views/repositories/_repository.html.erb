@@ -1,234 +1,293 @@
 <div id="<%= dom_id repository %>">
-    <div class="row">
-      <div class="col-md-6">
-        <div class="info-section">
-          <h6><i class="bi bi-hdd-network me-2"></i>SVN Repository Details</h6>
-          <dl class="row">
-            <dt class="col-sm-4">SVN URL:</dt>
-            <dd class="col-sm-8">
-              <code class="text-break"><%= repository.svn_url %></code>
-            </dd>
-          
-            <dt class="col-sm-4">Auth Type:</dt>
-            <dd class="col-sm-8">
-              <span class="badge bg-secondary">
-                <i class="bi bi-key-fill me-1"></i><%= repository.auth_type.capitalize %>
-              </span>
-            </dd>
-          
-          <% if repository.username.present? %>
-            <dt class="col-sm-4">Username:</dt>
-            <dd class="col-sm-8"><%= repository.username %></dd>
-          <% end %>
-          
-            <dt class="col-sm-4">Branch Option:</dt>
-            <dd class="col-sm-8"><%= repository.branch_option || "Not specified" %></dd>
-          </dl>
-        </div>
-      </div>
-      
-      <div class="col-md-6">
-        <div class="info-section">
-          <h6><i class="bi bi-gitlab me-2"></i>GitLab Target Project</h6>
-          <% if repository.gitlab_project_id.present? %>
-            <dl class="row">
-              <dt class="col-sm-4">Project:</dt>
-              <dd class="col-sm-8">
-                <span class="text-primary fw-semibold">
-                  <i class="bi bi-folder2-open me-1"></i><%= repository.gitlab_project_path %>
+    <!-- 진행 단계 표시기 -->
+    <%= render 'progress_steps', repository: repository %>
+    
+    <!-- 메인 컨텐츠 카드 -->
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="row">
+          <!-- SVN 정보 섹션 -->
+          <div class="col-md-4 mb-3 mb-md-0">
+            <div class="section-header d-flex align-items-center mb-3">
+              <i class="bi bi-hdd-network fs-5 text-primary me-2"></i>
+              <h6 class="mb-0">SVN Repository</h6>
+            </div>
+            <div class="info-compact">
+              <div class="mb-2">
+                <small class="text-muted d-block">URL</small>
+                <code class="text-break small"><%= repository.svn_url %></code>
+              </div>
+              <div class="mb-2">
+                <small class="text-muted d-block">인증</small>
+                <span class="badge bg-light text-dark">
+                  <i class="bi bi-shield-check me-1"></i><%= repository.auth_type.capitalize %>
+                  <% if repository.username.present? %>
+                    (<%= repository.username %>)
+                  <% end %>
                 </span>
-              </dd>
+              </div>
+            </div>
+          </div>
+          
+          <!-- SVN 구조 섹션 -->
+          <div class="col-md-4 mb-3 mb-md-0 border-start">
+            <div class="section-header d-flex align-items-center justify-content-between mb-3">
+              <div class="d-flex align-items-center">
+                <i class="bi bi-diagram-3 fs-5 text-primary me-2"></i>
+                <h6 class="mb-0">SVN 구조</h6>
+                <% if repository.svn_structure.present? %>
+                  <i class="bi bi-check-circle-fill text-success ms-2" title="완료됨"></i>
+                <% end %>
+              </div>
+            </div>
+            
+            <div data-controller="svn-detector" class="info-compact">
+              <div data-svn-detector-target="structureInfo">
+                <% if repository.svn_structure.present? %>
+                  <div class="structure-summary">
+                    <span class="badge bg-<%= repository.svn_structure['layout'] == 'standard' ? 'success' : 'info' %> mb-2">
+                      <%= repository.svn_structure['layout'] == 'standard' ? '표준 레이아웃' : '커스텀 레이아웃' %>
+                    </span>
+                    <div class="small text-muted">
+                      trunk: <%= repository.trunk_path || "없음" %><br>
+                      branches: <%= repository.branches_path || "없음" %><br>
+                      tags: <%= repository.tags_path || "없음" %>
+                    </div>
+                  </div>
+                <% else %>
+                  <button type="button"
+                      class="btn btn-primary btn-sm w-100"
+                      data-svn-detector-target="button"
+                      data-action="click->svn-detector#detect"
+                      data-url="<%= detect_structure_repository_path(repository) %>"
+                      data-repository-id="<%= repository.id %>">
+                    <span class="spinner-border spinner-border-sm d-none me-1" 
+                          role="status" 
+                          data-svn-detector-target="spinner"></span>
+                    <i class="bi bi-search me-1"></i>
+                    <span data-svn-detector-target="buttonText">구조 감지하기</span>
+                  </button>
+                  <small class="text-muted d-block mt-1">SVN 레이아웃을 자동으로 감지합니다</small>
+                <% end %>
+              </div>
               
-              <dt class="col-sm-4">URL:</dt>
-              <dd class="col-sm-8">
-                <%= link_to repository.gitlab_project_url, target: "_blank", rel: "noopener", class: "text-decoration-none" do %>
-                  <i class="bi bi-box-arrow-up-right me-1"></i>View on GitLab
+              <div data-svn-detector-target="result" class="mt-2">
+                <!-- 감지 결과가 여기에 표시됩니다 -->
+              </div>
+            </div>
+          </div>
+          
+          <!-- 마이그레이션 전략 섹션 -->
+          <div class="col-md-4 border-start">
+            <div class="section-header d-flex align-items-center justify-content-between mb-3">
+              <div class="d-flex align-items-center">
+                <i class="bi bi-sliders fs-5 text-primary me-2"></i>
+                <h6 class="mb-0">마이그레이션 전략</h6>
+                <% if repository.migration_type.present? %>
+                  <i class="bi bi-check-circle-fill text-success ms-2" title="완료됨"></i>
                 <% end %>
-              </dd>
-            </dl>
-          <% else %>
-            <div class="text-center py-3">
-              <i class="bi bi-exclamation-circle text-warning fs-3 d-block mb-2"></i>
-              <p class="text-muted mb-2">No GitLab project selected yet.</p>
-              <% if current_user.gitlab_token %>
-                <%= link_to gitlab_projects_path(repository_id: repository.id), class: "btn btn-primary btn-sm" do %>
-                  <i class="bi bi-plus-circle me-1"></i>Select GitLab Project
-                <% end %>
+              </div>
+            </div>
+            
+            <div class="info-compact">
+              <% if repository.migration_type.present? %>
+                <div class="strategy-summary">
+                  <span class="badge bg-<%= repository.migration_method == 'full_history' ? 'success' : 'secondary' %> mb-2">
+                    <%= repository.migration_method == 'full_history' ? '전체 이력 보존' : '최신 파일만' %>
+                  </span>
+                  <div class="small text-muted">
+                    타입: <%= repository.migration_type.humanize %><br>
+                    브랜치: <%= repository.branch_strategy&.humanize || "모든 브랜치" %>
+                  </div>
+                  <%= link_to edit_strategy_repository_path(repository), class: "btn btn-sm btn-outline-primary mt-2" do %>
+                    <i class="bi bi-pencil me-1"></i>수정
+                  <% end %>
+                </div>
               <% else %>
-                <%= link_to new_gitlab_token_path(repository_id: repository.id), class: "btn btn-warning btn-sm" do %>
-                  <i class="bi bi-key me-1"></i>Configure GitLab Access
+                <% if repository.svn_structure.present? %>
+                  <%= link_to edit_strategy_repository_path(repository), class: "btn btn-primary btn-sm w-100" do %>
+                    <i class="bi bi-sliders me-1"></i>전략 설정하기
+                  <% end %>
+                  <small class="text-muted d-block mt-1">마이그레이션 옵션을 설정합니다</small>
+                <% else %>
+                  <div class="text-muted small">
+                    <i class="bi bi-info-circle me-1"></i>먼저 SVN 구조를 감지해주세요
+                  </div>
                 <% end %>
               <% end %>
             </div>
-          <% end %>
-        </div>
-      </div>
-    </div>
-    
-    <div class="row mt-3">
-      <div class="col-md-6">
-        <div class="info-section">
-          <h6><i class="bi bi-diagram-3 me-2"></i>SVN Structure</h6>
-          <% if repository.svn_structure.present? %>
-            <dl class="row">
-              <dt class="col-sm-4">Layout:</dt>
-              <dd class="col-sm-8">
-                <span class="badge bg-<%= repository.svn_structure['layout'] == 'standard' ? 'success' : 'warning' %>">
-                  <i class="bi bi-<%= repository.svn_structure['layout'] == 'standard' ? 'check' : 'exclamation-triangle' %> me-1"></i>
-                  <%= repository.svn_structure['layout']&.humanize %>
-                </span>
-              </dd>
-            
-            <dt class="col-sm-4">Trunk:</dt>
-            <dd class="col-sm-8"><%= repository.trunk_path || "Not detected" %></dd>
-            
-            <dt class="col-sm-4">Branches:</dt>
-            <dd class="col-sm-8"><%= repository.branches_path || "Not detected" %></dd>
-            
-              <dt class="col-sm-4">Tags:</dt>
-              <dd class="col-sm-8"><%= repository.tags_path || "Not detected" %></dd>
-            </dl>
-          <% else %>
-            <p class="text-muted mb-2">SVN structure not detected yet.</p>
-          <% end %>
-          <%= button_to detect_structure_repository_path(repository), 
-              method: :post,
-              data: { "turbo-method": :post },
-              class: "btn btn-info btn-sm" do %>
-            <i class="bi bi-search me-1"></i>Detect SVN Structure
-          <% end %>
-        </div>
-      </div>
-      
-      <div class="col-md-6">
-        <div class="info-section">
-          <h6><i class="bi bi-gear me-2"></i>Migration Strategy</h6>
-        <% if repository.migration_type.present? %>
-          <dl class="row">
-            <dt class="col-sm-4">Type:</dt>
-            <dd class="col-sm-8"><%= repository.migration_type.humanize %></dd>
-            
-            <dt class="col-sm-4">Preserve History:</dt>
-            <dd class="col-sm-8"><%= repository.preserve_history ? "Yes" : "No" %></dd>
-            
-            <dt class="col-sm-4">Branch Strategy:</dt>
-            <dd class="col-sm-8"><%= repository.branch_strategy&.humanize || "All branches" %></dd>
-            
-              <dt class="col-sm-4">Migration Method:</dt>
-              <dd class="col-sm-8">
-                <span class="badge bg-<%= repository.migration_method == 'full_history' ? 'success' : 'secondary' %>">
-                  <i class="bi bi-<%= repository.migration_method == 'full_history' ? 'clock-history' : 'file-earmark' %> me-1"></i>
-                  <%= repository.migration_method.humanize %>
-                </span>
-                <% if repository.migration_method == 'simple' %>
-                  <small class="text-muted d-block mt-1">Only latest files, no history</small>
-                <% else %>
-                  <small class="text-success d-block mt-1">Full commit history preserved</small>
-                <% end %>
-              </dd>
-            </dl>
-          <% else %>
-            <p class="text-muted mb-2">No migration strategy configured yet.</p>
-          <% end %>
-          <%= link_to edit_strategy_repository_path(repository), class: "btn btn-info btn-sm" do %>
-            <i class="bi bi-sliders me-1"></i>Configure Strategy
-          <% end %>
-        </div>
-      </div>
-    </div>
-    
-    <% if repository.authors_mapping.present? && repository.authors_mapping.is_a?(Array) && repository.authors_mapping.any? %>
-      <div class="row mt-3">
-        <div class="col-md-12">
-          <h6>Authors (<%= repository.authors_mapping.size %> found)</h6>
-          <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
-            <table class="table table-sm">
-              <thead>
-                <tr>
-                  <th>SVN Name</th>
-                  <th>Git Name</th>
-                  <th>Git Email</th>
-                </tr>
-              </thead>
-              <tbody>
-                <% repository.authors_mapping.each do |author| %>
-                  <tr>
-                    <td><%= author['svn_name'] %></td>
-                    <td><%= author['git_name'] %></td>
-                    <td><%= author['git_email'] %></td>
-                  </tr>
-                <% end %>
-              </tbody>
-            </table>
           </div>
-          <div class="mt-2">
-            <%= link_to "Edit Authors Mapping", edit_authors_repository_path(repository), 
-                class: "btn btn-sm btn-info" %>
+        </div>
+      </div>
+    </div>
+    
+    <!-- GitLab 프로젝트 섹션 -->
+    <div class="card shadow-sm mt-3">
+      <div class="card-body">
+        <div class="section-header d-flex align-items-center justify-content-between mb-3">
+          <div class="d-flex align-items-center">
+            <i class="bi bi-gitlab fs-5 text-primary me-2"></i>
+            <h6 class="mb-0">GitLab 대상 프로젝트</h6>
+            <% if repository.gitlab_project_id.present? %>
+              <i class="bi bi-check-circle-fill text-success ms-2" title="완료됨"></i>
+            <% end %>
+          </div>
+        </div>
+        
+        <% if repository.gitlab_project_id.present? %>
+          <div class="d-flex align-items-center justify-content-between">
+            <div>
+              <div class="d-flex align-items-center mb-2">
+                <i class="bi bi-folder2-open text-primary me-2"></i>
+                <span class="fw-semibold"><%= repository.gitlab_project_path %></span>
+              </div>
+              <%= link_to repository.gitlab_project_url, target: "_blank", rel: "noopener", class: "text-decoration-none small" do %>
+                <i class="bi bi-box-arrow-up-right me-1"></i>GitLab에서 보기
+              <% end %>
+            </div>
+            <div>
+              <%= link_to gitlab_projects_path(repository_id: repository.id), class: "btn btn-sm btn-outline-primary" do %>
+                <i class="bi bi-arrow-left-right me-1"></i>프로젝트 변경
+              <% end %>
+            </div>
+          </div>
+        <% else %>
+          <% if repository.migration_type.present? %>
+            <div class="text-center py-3">
+              <% if current_user.gitlab_token %>
+                <%= link_to gitlab_projects_path(repository_id: repository.id), class: "btn btn-primary" do %>
+                  <i class="bi bi-folder-plus me-1"></i>GitLab 프로젝트 선택
+                <% end %>
+                <p class="text-muted small mt-2 mb-0">마이그레이션할 대상 프로젝트를 선택하세요</p>
+              <% else %>
+                <%= link_to new_gitlab_token_path(repository_id: repository.id), class: "btn btn-warning" do %>
+                  <i class="bi bi-key me-1"></i>GitLab 토큰 설정
+                <% end %>
+                <p class="text-muted small mt-2 mb-0">먼저 GitLab 액세스 토큰을 설정해주세요</p>
+              <% end %>
+            </div>
+          <% else %>
+            <div class="text-muted small">
+              <i class="bi bi-info-circle me-1"></i>먼저 마이그레이션 전략을 설정해주세요
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+    
+    <!-- Authors 섹션 -->
+    <% if repository.authors_mapping.present? && repository.authors_mapping.is_a?(Array) && repository.authors_mapping.any? %>
+      <div class="card shadow-sm mt-3">
+        <div class="card-body">
+          <div class="section-header d-flex align-items-center justify-content-between mb-3">
+            <div class="d-flex align-items-center">
+              <i class="bi bi-people fs-5 text-primary me-2"></i>
+              <h6 class="mb-0">Authors (<%= repository.authors_mapping.size %>명)</h6>
+            </div>
+            <%= link_to edit_authors_repository_path(repository), class: "btn btn-sm btn-outline-primary" do %>
+              <i class="bi bi-pencil me-1"></i>편집
+            <% end %>
+          </div>
+          <div class="authors-preview">
+            <% repository.authors_mapping.first(3).each do |author| %>
+              <div class="author-item small">
+                <i class="bi bi-person-circle text-muted me-2"></i>
+                <span class="text-muted"><%= author['svn_name'] %></span>
+                <i class="bi bi-arrow-right mx-2 text-muted"></i>
+                <span><%= author['git_name'] %> &lt;<%= author['git_email'] %>&gt;</span>
+              </div>
+            <% end %>
+            <% if repository.authors_mapping.size > 3 %>
+              <div class="text-muted small mt-1">
+                ... 그 외 <%= repository.authors_mapping.size - 3 %>명
+              </div>
+            <% end %>
           </div>
         </div>
       </div>
     <% end %>
     
-    <div class="action-buttons mt-4 p-3 bg-light rounded">
-      <% if repository.gitlab_project_id.present? && repository.migration_type.present? %>
-        <%= link_to new_repository_job_path(repository), class: "btn-primary-action" do %>
-          <i class="bi bi-play-circle-fill"></i>Start Migration
-        <% end %>
-      <% end %>
-      
-      <% if repository.gitlab_project_id.present? %>
-        <%= link_to gitlab_projects_path(repository_id: repository.id), class: "btn-secondary-action btn-sm" do %>
-          <i class="bi bi-arrow-left-right"></i>Change GitLab Project
-        <% end %>
-      <% end %>
-      
-      <% if current_user.gitlab_token %>
-        <%= link_to edit_gitlab_token_path, class: "btn btn-outline-secondary btn-sm" do %>
-          <i class="bi bi-key"></i>Update Token
-        <% end %>
-      <% end %>
-      
-      <%= link_to jobs_path, class: "btn btn-outline-info btn-sm" do %>
-        <i class="bi bi-list-task"></i>View Jobs
-      <% end %>
-      
-      <% if repository.enable_incremental_sync? && repository.gitlab_project_id.present? %>
-        <%= link_to sync_repository_path(repository), 
-            method: :post,
-            data: { "turbo-method": :post, "turbo-confirm": "Start incremental sync now?" },
-            class: "btn btn-outline-warning btn-sm" do %>
-          <i class="bi bi-arrow-repeat"></i>Sync Now
-        <% end %>
-      <% end %>
-    </div>
-    
+    <!-- 추가 옵션 섹션 -->
     <% if repository.enable_incremental_sync? %>
-      <div class="mt-3 p-3 bg-light rounded">
-        <h6>Incremental Sync Status</h6>
-        <dl class="row mb-0">
-          <dt class="col-sm-4">Status:</dt>
-          <dd class="col-sm-8">
-            <span class="badge bg-<%= repository.needs_sync? ? 'warning' : 'success' %>">
-              <i class="bi bi-<%= repository.needs_sync? ? 'exclamation-triangle' : 'check-circle' %> me-1"></i>
-              <%= repository.needs_sync? ? 'Needs Sync' : 'Up to Date' %>
-            </span>
-          </dd>
-          
-          <dt class="col-sm-4">Last Synced:</dt>
-          <dd class="col-sm-8">
-            <%= repository.last_synced_at ? repository.last_synced_at.strftime("%Y-%m-%d %H:%M:%S") : "Never" %>
-          </dd>
-          
-          <dt class="col-sm-4">Last SVN Revision:</dt>
-          <dd class="col-sm-8">
-            <%= repository.last_synced_revision || "Unknown" %>
-          </dd>
-          
-          <dt class="col-sm-4">Local Git Path:</dt>
-          <dd class="col-sm-8">
-            <code><%= repository.local_git_path || "Not set" %></code>
-          </dd>
-        </dl>
+      <div class="card shadow-sm mt-3">
+        <div class="card-body">
+          <div class="section-header d-flex align-items-center justify-content-between mb-3">
+            <div class="d-flex align-items-center">
+              <i class="bi bi-arrow-repeat fs-5 text-primary me-2"></i>
+              <h6 class="mb-0">증분 동기화</h6>
+            </div>
+            <% if repository.gitlab_project_id.present? %>
+              <%= link_to sync_repository_path(repository), 
+                  method: :post,
+                  data: { "turbo-method": :post, "turbo-confirm": "지금 동기화를 시작하시겠습니까?" },
+                  class: "btn btn-sm btn-warning" do %>
+                <i class="bi bi-arrow-repeat me-1"></i>지금 동기화
+              <% end %>
+            <% end %>
+          </div>
+          <div class="sync-status">
+            <div class="row small">
+              <div class="col-6">
+                <span class="text-muted">상태:</span>
+                <span class="badge bg-<%= repository.needs_sync? ? 'warning' : 'success' %> ms-2">
+                  <%= repository.needs_sync? ? '동기화 필요' : '최신 상태' %>
+                </span>
+              </div>
+              <div class="col-6">
+                <span class="text-muted">마지막 동기화:</span>
+                <span class="ms-2"><%= repository.last_synced_at ? repository.last_synced_at.strftime("%m/%d %H:%M") : "없음" %></span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     <% end %>
 </div>
+
+<style>
+  /* 섹션 스타일 */
+  .section-header {
+    border-bottom: 1px solid #e9ecef;
+    padding-bottom: 0.75rem;
+  }
+  
+  .info-compact {
+    font-size: 0.875rem;
+  }
+  
+  .structure-summary,
+  .strategy-summary {
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 0.375rem;
+  }
+  
+  .authors-preview {
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  
+  .author-item {
+    padding: 0.25rem 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  
+  .author-item:last-child {
+    border-bottom: none;
+  }
+  
+  /* 카드 호버 효과 */
+  .card {
+    transition: all 0.2s ease;
+    border: 1px solid #e9ecef;
+  }
+  
+  .card:hover {
+    box-shadow: 0 0.25rem 0.5rem rgba(0,0,0,0.08) !important;
+  }
+  
+  /* 상태별 강조 효과 */
+  .progress-step.active ~ .card:first-of-type {
+    border-color: #0d6efd;
+  }
+</style>
