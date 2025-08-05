@@ -1,0 +1,35 @@
+#!/bin/bash
+set -e
+
+echo "=== SVN to GitLab Migration Tool Setup ==="
+
+# Check if Docker is running
+if ! docker info > /dev/null 2>&1; then
+  echo "❌ Docker is not running. Please start Docker and try again."
+  exit 1
+fi
+
+echo "🐳 Building Docker images..."
+docker compose build
+
+echo "📦 Installing dependencies..."
+docker compose run --rm web bundle install
+
+echo "🗄️  Setting up database..."
+docker compose run --rm -e RAILS_ENV=development web rails db:create
+docker compose run --rm -e RAILS_ENV=development web rails db:migrate
+docker compose run --rm -e RAILS_ENV=development web rails db:seed
+
+echo "🧹 Cleaning up temporary files..."
+docker compose run --rm web rails tmp:clear
+docker compose run --rm web rails log:clear
+
+echo "✅ Setup complete!"
+echo ""
+echo "To start the application, run:"
+echo "  docker compose up"
+echo ""
+echo "Then visit http://localhost:3000"
+echo ""
+echo "To run tests:"
+echo "  bin/test"

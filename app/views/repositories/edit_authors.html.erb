@@ -1,0 +1,169 @@
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-md-12">
+      <h2>Authors Mapping for <%= @repository.name %></h2>
+      <p class="text-muted">Map SVN usernames to Git author format (Name &lt;email&gt;)</p>
+      
+      <% if @repository.authors_mapping.blank? || @repository.authors_mapping.empty? %>
+        <div class="alert alert-info">
+          <p>No authors detected yet. Please run "Detect SVN Structure" first to extract authors from the repository.</p>
+          <%= link_to "← Back to Repository", @repository, class: "btn btn-secondary" %>
+        </div>
+      <% else %>
+        <%= form_with url: update_authors_repository_path(@repository), method: :patch, local: true do |form| %>
+          <div class="mb-3">
+            <div class="row">
+              <div class="col-md-6">
+                <button type="button" class="btn btn-sm btn-secondary" id="applyDomainBtn">
+                  Apply Domain to All Emails
+                </button>
+                <input type="text" id="domainInput" placeholder="example.com" class="form-control form-control-sm d-inline-block ms-2" style="width: 200px;">
+              </div>
+              <div class="col-md-6 text-end">
+                <span class="text-muted"><%= @repository.authors_mapping.size %> authors found</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th width="20%">SVN Username</th>
+                      <th width="30%">Git Name</th>
+                      <th width="30%">Git Email</th>
+                      <th width="20%">Preview</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% @repository.authors_mapping.each_with_index do |author, index| %>
+                      <tr>
+                        <td>
+                          <code><%= author['svn_name'] %></code>
+                          <%= hidden_field_tag "authors[#{index}][svn_name]", author['svn_name'] %>
+                        </td>
+                        <td>
+                          <%= text_field_tag "authors[#{index}][git_name]", 
+                              author['git_name'], 
+                              class: "form-control form-control-sm author-name",
+                              data: { index: index } %>
+                        </td>
+                        <td>
+                          <%= email_field_tag "authors[#{index}][git_email]", 
+                              author['git_email'], 
+                              class: "form-control form-control-sm author-email",
+                              data: { index: index } %>
+                        </td>
+                        <td>
+                          <small class="text-muted preview" data-index="<%= index %>">
+                            <%= author['svn_name'] %> = <%= author['git_name'] %> &lt;<%= author['git_email'] %>&gt;
+                          </small>
+                        </td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <div class="row">
+              <div class="col-md-6">
+                <h5>Authors File Preview</h5>
+                <div class="card">
+                  <div class="card-body">
+                    <pre class="mb-0" style="max-height: 300px; overflow-y: auto;"><code id="authorsFilePreview"><% @repository.authors_mapping.each do |author| %><%= author['svn_name'] %> = <%= author['git_name'] %> <<%= author['git_email'] %>>
+<% end %></code></pre>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <h5>Usage Instructions</h5>
+                <div class="card">
+                  <div class="card-body">
+                    <p>This mapping will be used during migration to convert SVN usernames to proper Git author format.</p>
+                    <p class="mb-0">The authors file will be automatically used by git-svn during the migration process.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <div class="form-check mb-3">
+              <%= check_box_tag :generate_file, 1, true, class: "form-check-input" %>
+              <%= label_tag :generate_file, "Generate authors file for git-svn", class: "form-check-label" %>
+            </div>
+            
+            <%= form.submit "Save Authors Mapping", class: "btn btn-primary" %>
+            <%= link_to "Cancel", @repository, class: "btn btn-secondary" %>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Real-time preview update
+  function updatePreview(index) {
+    const svnName = document.querySelector(`input[name="authors[${index}][svn_name]"]`).value;
+    const gitName = document.querySelector(`input[name="authors[${index}][git_name]"]`).value;
+    const gitEmail = document.querySelector(`input[name="authors[${index}][git_email]"]`).value;
+    const preview = document.querySelector(`.preview[data-index="${index}"]`);
+    
+    preview.textContent = `${svnName} = ${gitName} <${gitEmail}>`;
+    updateFilePreview();
+  }
+  
+  // Update full file preview
+  function updateFilePreview() {
+    const preview = document.getElementById('authorsFilePreview');
+    let content = '';
+    
+    document.querySelectorAll('input[name$="[svn_name]"]').forEach((input, index) => {
+      const svnName = input.value;
+      const gitName = document.querySelector(`input[name="authors[${index}][git_name]"]`).value;
+      const gitEmail = document.querySelector(`input[name="authors[${index}][git_email]"]`).value;
+      
+      content += `${svnName} = ${gitName} <${gitEmail}>\n`;
+    });
+    
+    preview.textContent = content.trim();
+  }
+  
+  // Apply domain to all emails
+  document.getElementById('applyDomainBtn').addEventListener('click', function() {
+    const domain = document.getElementById('domainInput').value;
+    if (!domain) {
+      alert('Please enter a domain');
+      return;
+    }
+    
+    document.querySelectorAll('.author-email').forEach(function(input) {
+      const currentEmail = input.value;
+      if (!currentEmail.includes('@')) {
+        input.value = currentEmail + '@' + domain;
+      } else if (currentEmail.endsWith('@example.com')) {
+        // Replace example.com with new domain
+        input.value = currentEmail.replace('@example.com', '@' + domain);
+      }
+      
+      // Trigger update
+      const index = input.dataset.index;
+      updatePreview(index);
+    });
+  });
+  
+  // Listen for input changes
+  document.querySelectorAll('.author-name, .author-email').forEach(function(input) {
+    input.addEventListener('input', function() {
+      updatePreview(this.dataset.index);
+    });
+  });
+});
+</script>

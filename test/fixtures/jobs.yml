@@ -1,0 +1,27 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  repository: one
+  status: MyString
+  gitlab_project_id: MyString
+  gitlab_namespace: MyString
+  progress: 1
+  error_message: MyText
+  started_at: 2025-07-24 16:36:57
+  completed_at: 2025-07-24 16:36:57
+  logs: MyText
+  last_migrated_revision: MyString
+  user: one
+
+two:
+  repository: two
+  status: MyString
+  gitlab_project_id: MyString
+  gitlab_namespace: MyString
+  progress: 1
+  error_message: MyText
+  started_at: 2025-07-24 16:36:57
+  completed_at: 2025-07-24 16:36:57
+  logs: MyText
+  last_migrated_revision: MyString
+  user: two

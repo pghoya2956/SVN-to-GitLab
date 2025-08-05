@@ -1,0 +1,85 @@
+<div class="page-header d-flex justify-content-between align-items-center">
+  <div>
+    <h1><i class="bi bi-folder-fill me-2"></i>SVN Repositories</h1>
+    <p class="text-muted mb-0">Manage your SVN repositories and configure migrations</p>
+  </div>
+  <div class="header-actions">
+    <%= link_to new_repository_path, class: "btn-primary-action" do %>
+      <i class="bi bi-plus-circle-fill"></i>Add New Repository
+    <% end %>
+  </div>
+</div>
+
+<% if @repositories.any? %>
+  <div class="table-responsive mt-4">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th><i class="bi bi-folder me-1"></i>Repository Name</th>
+          <th><i class="bi bi-link-45deg me-1"></i>SVN URL</th>
+          <th><i class="bi bi-shield-lock me-1"></i>Authentication</th>
+          <th><i class="bi bi-calendar me-1"></i>Created</th>
+          <th><i class="bi bi-gear me-1"></i>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @repositories.each do |repository| %>
+          <tr>
+            <td>
+              <strong><%= repository.name %></strong>
+              <% if repository.gitlab_project_id.present? %>
+                <span class="badge bg-success ms-2">
+                  <i class="bi bi-check-circle me-1"></i>Configured
+                </span>
+              <% end %>
+            </td>
+            <td>
+              <code class="text-truncate d-inline-block" style="max-width: 300px;" title="<%= repository.svn_url %>">
+                <%= repository.svn_url %>
+              </code>
+            </td>
+            <td>
+              <span class="badge bg-secondary">
+                <i class="bi bi-<%= repository.auth_type == 'ssh' ? 'file-earmark-lock' : 'key' %> me-1"></i>
+                <%= case repository.auth_type
+                    when 'basic' then 'Username/Password'
+                    when 'ssh' then 'SSH Key'
+                    when 'token' then 'Access Token'
+                    else repository.auth_type.capitalize
+                    end %>
+              </span>
+            </td>
+            <td>
+              <small class="text-muted">
+                <%= repository.created_at.strftime("%B %d, %Y") %>
+              </small>
+            </td>
+            <td>
+              <div class="btn-group btn-group-sm" role="group">
+                <%= link_to repository, class: "btn btn-outline-primary", title: "View Details" do %>
+                  <i class="bi bi-eye"></i>
+                <% end %>
+                <%= link_to edit_repository_path(repository), class: "btn btn-outline-secondary", title: "Edit" do %>
+                  <i class="bi bi-pencil"></i>
+                <% end %>
+                <%= link_to repository, data: { "turbo-method": :delete, "turbo-confirm": "Are you sure you want to delete this repository?" }, 
+                            class: "btn btn-outline-danger", title: "Delete" do %>
+                  <i class="bi bi-trash"></i>
+                <% end %>
+              </div>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% else %>
+  <div class="empty-state mt-5">
+    <i class="bi bi-folder-x"></i>
+    <h4>No repositories yet</h4>
+    <p>Get started by adding your first SVN repository for migration.</p>
+    <%= link_to new_repository_path, class: "btn btn-primary" do %>
+      <i class="bi bi-plus-circle me-1"></i>Add First Repository
+    <% end %>
+  </div>
+<% end %>

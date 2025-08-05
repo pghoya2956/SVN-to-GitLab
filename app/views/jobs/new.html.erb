@@ -1,0 +1,75 @@
+<div class="container mt-4">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="mb-0">Start Migration Job</h3>
+        </div>
+        <div class="card-body">
+          <h5>Repository: <%= @repository.name %></h5>
+          <p class="text-muted">SVN: <%= @repository.svn_url %></p>
+          <p class="text-muted">GitLab: <%= @repository.gitlab_project_path %></p>
+          
+          <hr>
+          
+          <h6>Migration Configuration Summary</h6>
+          <% strategy_service = Repositories::MigrationStrategyService.new(@repository) %>
+          <% summary = strategy_service.migration_summary %>
+          
+          <dl class="row">
+            <dt class="col-sm-4">Migration Type:</dt>
+            <dd class="col-sm-8"><%= summary[:type] %></dd>
+            
+            <dt class="col-sm-4">Preserve History:</dt>
+            <dd class="col-sm-8"><%= summary[:preserve_history] ? "Yes" : "No" %></dd>
+            
+            <dt class="col-sm-4">Branch Strategy:</dt>
+            <dd class="col-sm-8"><%= summary[:branch_strategy] %></dd>
+            
+            <dt class="col-sm-4">Tag Strategy:</dt>
+            <dd class="col-sm-8"><%= summary[:tag_strategy] %></dd>
+            
+            <dt class="col-sm-4">Large File Handling:</dt>
+            <dd class="col-sm-8"><%= summary[:large_file_handling] %></dd>
+            
+            <dt class="col-sm-4">Estimated Time:</dt>
+            <dd class="col-sm-8"><%= summary[:estimated_time_minutes] %> minutes</dd>
+          </dl>
+          
+          <% errors = strategy_service.validate_strategy %>
+          <% if errors.any? %>
+            <div class="alert alert-danger">
+              <h6>Please fix these issues before starting migration:</h6>
+              <ul class="mb-0">
+                <% errors.each do |error| %>
+                  <li><%= error %></li>
+                <% end %>
+              </ul>
+              <%= link_to "Edit Strategy", edit_strategy_repository_path(@repository), 
+                  class: "btn btn-warning mt-2" %>
+            </div>
+          <% else %>
+            <%= form_with(model: [@repository, @job], local: true) do |form| %>
+              <div class="mb-3">
+                <%= form.label :description, "Job Description (optional)", class: "form-label" %>
+                <%= form.text_area :description, class: "form-control", rows: 3,
+                    placeholder: "Add any notes about this migration..." %>
+              </div>
+              
+              <div class="alert alert-info">
+                <strong>Note:</strong> The migration will start immediately after clicking the button below.
+                You can monitor the progress on the next page.
+              </div>
+              
+              <div class="d-flex justify-content-between">
+                <%= form.submit "Start Migration", class: "btn btn-primary btn-lg",
+                    data: { "turbo-disable-with": "Starting..." } %>
+                <%= link_to "Cancel", @repository, class: "btn btn-secondary" %>
+              </div>
+            <% end %>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

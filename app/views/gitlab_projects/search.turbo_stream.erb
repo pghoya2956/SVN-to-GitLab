@@ -1,0 +1,29 @@
+<%= turbo_stream.update "search_results" do %>
+  <% if @search_results[:success] %>
+    <% if @search_results[:projects].any? %>
+      <h6>Search Results</h6>
+      <div class="list-group">
+        <% @search_results[:projects].each do |project| %>
+          <div class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+              <h6 class="mb-1"><%= project[:name] %></h6>
+              <p class="mb-1 text-muted"><%= project[:path_with_namespace] %></p>
+              <small class="text-muted"><%= project[:description] %></small>
+            </div>
+            <%= form_with(url: select_gitlab_projects_path, method: :post, local: true) do |form| %>
+              <%= hidden_field_tag :repository_id, params[:repository_id] %>
+              <%= hidden_field_tag :project_id, project[:id] %>
+              <%= form.submit "Select", class: "btn btn-sm btn-primary" %>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    <% else %>
+      <p class="text-muted">No projects found matching your search.</p>
+    <% end %>
+  <% else %>
+    <div class="alert alert-danger">
+      <%= @search_results[:errors].join(", ") %>
+    </div>
+  <% end %>
+<% end %>

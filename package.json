@@ -1,0 +1,11 @@
+{
+  "devDependencies": {
+    "@playwright/test": "^1.54.2",
+    "playwright": "^1.54.1"
+  },
+  "scripts": {
+    "e2e:test": "playwright test",
+    "e2e:test:ui": "playwright test --ui",
+    "e2e:test:debug": "playwright test --debug"
+  }
+}

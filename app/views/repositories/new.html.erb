@@ -1,0 +1,22 @@
+<div class="container mt-4">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="page-header mb-4">
+        <h1><i class="bi bi-plus-circle me-2"></i>New Repository</h1>
+        <p class="text-muted">Add a new SVN repository for migration to GitLab</p>
+      </div>
+      
+      <div class="card">
+        <div class="card-body">
+          <%= render "form", repository: @repository %>
+        </div>
+      </div>
+      
+      <div class="mt-3">
+        <%= link_to repositories_path, class: "btn btn-outline-secondary" do %>
+          <i class="bi bi-arrow-left me-1"></i> Back to Repositories
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

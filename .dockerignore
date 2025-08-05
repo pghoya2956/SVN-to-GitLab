@@ -1,0 +1,71 @@
+# Git
+.git
+.gitignore
+
+# Docker
+.dockerignore
+Dockerfile*
+docker-compose*.yml
+
+# Ruby/Rails
+*.gem
+*.rbc
+/.bundle
+/vendor/bundle
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+/tmp/pids/*
+/tmp/cache/*
+/tmp/storage/*
+/tmp/migrations/*
+.byebug_history
+
+# Database
+*.sqlite3
+*.sqlite3-journal
+/db/*.sqlite3
+/db/*.sqlite3-journal
+
+# Assets
+/public/assets
+/public/packs
+/public/packs-test
+/node_modules
+/yarn-error.log
+yarn-debug.log*
+.yarn-integrity
+/app/assets/builds/*
+!/app/assets/builds/.keep
+
+# Tests
+/coverage
+/test/tmp
+/test/version_tmp
+/spec/tmp
+
+# Misc
+.DS_Store
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.project
+.rvmrc
+.ruby-version
+.ruby-gemset
+
+# Environment
+.env
+.env.*
+
+# Documentation
+README.md
+CLAUDE.md
+*.md
+
+# Development
+/bin/dev
+/bin/setup

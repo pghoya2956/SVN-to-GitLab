@@ -1,0 +1,24 @@
+{
+  "id": "incremental-sync-improvements",
+  "started": "2025-01-31T02:30:00Z",
+  "lastUpdated": "2025-01-31T02:45:00Z",
+  "status": "complete",
+  "phase": "complete",
+  "progress": {
+    "discovery": { "answered": 5, "total": 5 },
+    "detail": { "answered": 5, "total": 5 }
+  },
+  "contextFiles": [
+    "/app/jobs/migration_job.rb",
+    "/app/jobs/incremental_sync_job.rb",
+    "/app/models/job.rb",
+    "/app/models/repository.rb",
+    "/app/controllers/repositories_controller.rb"
+  ],
+  "relatedFeatures": [
+    "migration_job",
+    "incremental_sync",
+    "job_tracking",
+    "repository_status"
+  ]
+}

@@ -1,0 +1,234 @@
+<div id="<%= dom_id repository %>">
+    <div class="row">
+      <div class="col-md-6">
+        <div class="info-section">
+          <h6><i class="bi bi-hdd-network me-2"></i>SVN Repository Details</h6>
+          <dl class="row">
+            <dt class="col-sm-4">SVN URL:</dt>
+            <dd class="col-sm-8">
+              <code class="text-break"><%= repository.svn_url %></code>
+            </dd>
+          
+            <dt class="col-sm-4">Auth Type:</dt>
+            <dd class="col-sm-8">
+              <span class="badge bg-secondary">
+                <i class="bi bi-key-fill me-1"></i><%= repository.auth_type.capitalize %>
+              </span>
+            </dd>
+          
+          <% if repository.username.present? %>
+            <dt class="col-sm-4">Username:</dt>
+            <dd class="col-sm-8"><%= repository.username %></dd>
+          <% end %>
+          
+            <dt class="col-sm-4">Branch Option:</dt>
+            <dd class="col-sm-8"><%= repository.branch_option || "Not specified" %></dd>
+          </dl>
+        </div>
+      </div>
+      
+      <div class="col-md-6">
+        <div class="info-section">
+          <h6><i class="bi bi-gitlab me-2"></i>GitLab Target Project</h6>
+          <% if repository.gitlab_project_id.present? %>
+            <dl class="row">
+              <dt class="col-sm-4">Project:</dt>
+              <dd class="col-sm-8">
+                <span class="text-primary fw-semibold">
+                  <i class="bi bi-folder2-open me-1"></i><%= repository.gitlab_project_path %>
+                </span>
+              </dd>
+              
+              <dt class="col-sm-4">URL:</dt>
+              <dd class="col-sm-8">
+                <%= link_to repository.gitlab_project_url, target: "_blank", rel: "noopener", class: "text-decoration-none" do %>
+                  <i class="bi bi-box-arrow-up-right me-1"></i>View on GitLab
+                <% end %>
+              </dd>
+            </dl>
+          <% else %>
+            <div class="text-center py-3">
+              <i class="bi bi-exclamation-circle text-warning fs-3 d-block mb-2"></i>
+              <p class="text-muted mb-2">No GitLab project selected yet.</p>
+              <% if current_user.gitlab_token %>
+                <%= link_to gitlab_projects_path(repository_id: repository.id), class: "btn btn-primary btn-sm" do %>
+                  <i class="bi bi-plus-circle me-1"></i>Select GitLab Project
+                <% end %>
+              <% else %>
+                <%= link_to new_gitlab_token_path(repository_id: repository.id), class: "btn btn-warning btn-sm" do %>
+                  <i class="bi bi-key me-1"></i>Configure GitLab Access
+                <% end %>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    
+    <div class="row mt-3">
+      <div class="col-md-6">
+        <div class="info-section">
+          <h6><i class="bi bi-diagram-3 me-2"></i>SVN Structure</h6>
+          <% if repository.svn_structure.present? %>
+            <dl class="row">
+              <dt class="col-sm-4">Layout:</dt>
+              <dd class="col-sm-8">
+                <span class="badge bg-<%= repository.svn_structure['layout'] == 'standard' ? 'success' : 'warning' %>">
+                  <i class="bi bi-<%= repository.svn_structure['layout'] == 'standard' ? 'check' : 'exclamation-triangle' %> me-1"></i>
+                  <%= repository.svn_structure['layout']&.humanize %>
+                </span>
+              </dd>
+            
+            <dt class="col-sm-4">Trunk:</dt>
+            <dd class="col-sm-8"><%= repository.trunk_path || "Not detected" %></dd>
+            
+            <dt class="col-sm-4">Branches:</dt>
+            <dd class="col-sm-8"><%= repository.branches_path || "Not detected" %></dd>
+            
+              <dt class="col-sm-4">Tags:</dt>
+              <dd class="col-sm-8"><%= repository.tags_path || "Not detected" %></dd>
+            </dl>
+          <% else %>
+            <p class="text-muted mb-2">SVN structure not detected yet.</p>
+          <% end %>
+          <%= button_to detect_structure_repository_path(repository), 
+              method: :post,
+              data: { "turbo-method": :post },
+              class: "btn btn-info btn-sm" do %>
+            <i class="bi bi-search me-1"></i>Detect SVN Structure
+          <% end %>
+        </div>
+      </div>
+      
+      <div class="col-md-6">
+        <div class="info-section">
+          <h6><i class="bi bi-gear me-2"></i>Migration Strategy</h6>
+        <% if repository.migration_type.present? %>
+          <dl class="row">
+            <dt class="col-sm-4">Type:</dt>
+            <dd class="col-sm-8"><%= repository.migration_type.humanize %></dd>
+            
+            <dt class="col-sm-4">Preserve History:</dt>
+            <dd class="col-sm-8"><%= repository.preserve_history ? "Yes" : "No" %></dd>
+            
+            <dt class="col-sm-4">Branch Strategy:</dt>
+            <dd class="col-sm-8"><%= repository.branch_strategy&.humanize || "All branches" %></dd>
+            
+              <dt class="col-sm-4">Migration Method:</dt>
+              <dd class="col-sm-8">
+                <span class="badge bg-<%= repository.migration_method == 'full_history' ? 'success' : 'secondary' %>">
+                  <i class="bi bi-<%= repository.migration_method == 'full_history' ? 'clock-history' : 'file-earmark' %> me-1"></i>
+                  <%= repository.migration_method.humanize %>
+                </span>
+                <% if repository.migration_method == 'simple' %>
+                  <small class="text-muted d-block mt-1">Only latest files, no history</small>
+                <% else %>
+                  <small class="text-success d-block mt-1">Full commit history preserved</small>
+                <% end %>
+              </dd>
+            </dl>
+          <% else %>
+            <p class="text-muted mb-2">No migration strategy configured yet.</p>
+          <% end %>
+          <%= link_to edit_strategy_repository_path(repository), class: "btn btn-info btn-sm" do %>
+            <i class="bi bi-sliders me-1"></i>Configure Strategy
+          <% end %>
+        </div>
+      </div>
+    </div>
+    
+    <% if repository.authors_mapping.present? && repository.authors_mapping.is_a?(Array) && repository.authors_mapping.any? %>
+      <div class="row mt-3">
+        <div class="col-md-12">
+          <h6>Authors (<%= repository.authors_mapping.size %> found)</h6>
+          <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>SVN Name</th>
+                  <th>Git Name</th>
+                  <th>Git Email</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% repository.authors_mapping.each do |author| %>
+                  <tr>
+                    <td><%= author['svn_name'] %></td>
+                    <td><%= author['git_name'] %></td>
+                    <td><%= author['git_email'] %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-2">
+            <%= link_to "Edit Authors Mapping", edit_authors_repository_path(repository), 
+                class: "btn btn-sm btn-info" %>
+          </div>
+        </div>
+      </div>
+    <% end %>
+    
+    <div class="action-buttons mt-4 p-3 bg-light rounded">
+      <% if repository.gitlab_project_id.present? && repository.migration_type.present? %>
+        <%= link_to new_repository_job_path(repository), class: "btn-primary-action" do %>
+          <i class="bi bi-play-circle-fill"></i>Start Migration
+        <% end %>
+      <% end %>
+      
+      <% if repository.gitlab_project_id.present? %>
+        <%= link_to gitlab_projects_path(repository_id: repository.id), class: "btn-secondary-action btn-sm" do %>
+          <i class="bi bi-arrow-left-right"></i>Change GitLab Project
+        <% end %>
+      <% end %>
+      
+      <% if current_user.gitlab_token %>
+        <%= link_to edit_gitlab_token_path, class: "btn btn-outline-secondary btn-sm" do %>
+          <i class="bi bi-key"></i>Update Token
+        <% end %>
+      <% end %>
+      
+      <%= link_to jobs_path, class: "btn btn-outline-info btn-sm" do %>
+        <i class="bi bi-list-task"></i>View Jobs
+      <% end %>
+      
+      <% if repository.enable_incremental_sync? && repository.gitlab_project_id.present? %>
+        <%= link_to sync_repository_path(repository), 
+            method: :post,
+            data: { "turbo-method": :post, "turbo-confirm": "Start incremental sync now?" },
+            class: "btn btn-outline-warning btn-sm" do %>
+          <i class="bi bi-arrow-repeat"></i>Sync Now
+        <% end %>
+      <% end %>
+    </div>
+    
+    <% if repository.enable_incremental_sync? %>
+      <div class="mt-3 p-3 bg-light rounded">
+        <h6>Incremental Sync Status</h6>
+        <dl class="row mb-0">
+          <dt class="col-sm-4">Status:</dt>
+          <dd class="col-sm-8">
+            <span class="badge bg-<%= repository.needs_sync? ? 'warning' : 'success' %>">
+              <i class="bi bi-<%= repository.needs_sync? ? 'exclamation-triangle' : 'check-circle' %> me-1"></i>
+              <%= repository.needs_sync? ? 'Needs Sync' : 'Up to Date' %>
+            </span>
+          </dd>
+          
+          <dt class="col-sm-4">Last Synced:</dt>
+          <dd class="col-sm-8">
+            <%= repository.last_synced_at ? repository.last_synced_at.strftime("%Y-%m-%d %H:%M:%S") : "Never" %>
+          </dd>
+          
+          <dt class="col-sm-4">Last SVN Revision:</dt>
+          <dd class="col-sm-8">
+            <%= repository.last_synced_revision || "Unknown" %>
+          </dd>
+          
+          <dt class="col-sm-4">Local Git Path:</dt>
+          <dd class="col-sm-8">
+            <code><%= repository.local_git_path || "Not set" %></code>
+          </dd>
+        </dl>
+      </div>
+    <% end %>
+</div>

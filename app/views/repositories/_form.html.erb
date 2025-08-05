@@ -1,0 +1,203 @@
+<%= form_with(model: repository, local: false, data: { turbo_frame: "_top" }) do |form| %>
+  <% if repository.errors.any? %>
+    <div class="alert alert-danger">
+      <h6><%= pluralize(repository.errors.count, "error") %> prohibited this repository from being saved:</h6>
+      <ul class="mb-0">
+        <% repository.errors.each do |error| %>
+          <li><%= error.full_message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="form-group">
+    <%= form.label :name, class: "form-label" do %>
+      <i class="bi bi-folder me-1"></i>Repository Name
+    <% end %>
+    <%= form.text_field :name, class: "form-control", placeholder: "my-awesome-project", required: true %>
+    <div class="form-text">A descriptive name for your repository</div>
+  </div>
+
+  <div class="form-group">
+    <%= form.label :svn_url, class: "form-label" do %>
+      <i class="bi bi-link-45deg me-1"></i>SVN Repository URL
+    <% end %>
+    <%= form.text_field :svn_url, class: "form-control", placeholder: "https://svn.example.com/repos/myproject", required: true %>
+    <div class="form-text">The full URL to your SVN repository</div>
+  </div>
+
+  <div class="form-group">
+    <%= form.label :auth_type, class: "form-label" do %>
+      <i class="bi bi-shield-lock me-1"></i>Authentication Type
+    <% end %>
+    <%= form.select :auth_type, options_for_select([
+      ["Username/Password", "basic"],
+      ["SSH Key", "ssh"],
+      ["Access Token", "token"]
+    ], repository.auth_type), {}, class: "form-select" %>
+    <div class="form-text">Choose how to authenticate with your SVN server</div>
+  </div>
+
+  <div class="form-group" id="username-field">
+    <%= form.label :username, class: "form-label" do %>
+      <i class="bi bi-person me-1"></i>Username
+    <% end %>
+    <%= form.text_field :username, class: "form-control", placeholder: "svn-user" %>
+  </div>
+
+  <div class="form-group" id="password-field">
+    <%= form.label :encrypted_password, class: "form-label" do %>
+      <i class="bi bi-key me-1"></i>Password
+    <% end %>
+    <%= form.password_field :encrypted_password, class: "form-control", placeholder: "••••••••" %>
+  </div>
+
+  <div class="form-group d-none" id="ssh-key-field">
+    <%= form.label :ssh_key, class: "form-label" do %>
+      <i class="bi bi-file-earmark-lock me-1"></i>SSH Private Key
+    <% end %>
+    <%= form.text_area :ssh_key, class: "form-control font-monospace", rows: 10, placeholder: "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----" %>
+    <div class="form-text">Paste your SSH private key here</div>
+  </div>
+
+  <div class="form-group">
+    <%= form.label :branch_option, class: "form-label" do %>
+      <i class="bi bi-diagram-3 me-1"></i>Repository Layout
+    <% end %>
+    <%= form.select :branch_option, options_for_select([
+      ["Standard Layout (trunk/branches/tags)", "standard"],
+      ["Custom Layout", "custom"]
+    ], repository.branch_option), {}, class: "form-select" %>
+    <div class="form-text">Most SVN repositories use the standard layout</div>
+  </div>
+  
+  <% if repository.persisted? && repository.initial_migration_completed? %>
+    <div class="form-group">
+      <div class="form-check">
+        <%= form.check_box :enable_incremental_sync, class: "form-check-input" %>
+        <%= form.label :enable_incremental_sync, class: "form-check-label" do %>
+          <i class="bi bi-arrow-repeat me-1"></i>Enable Incremental Sync
+        <% end %>
+        <div class="form-text">
+          Automatically sync new SVN commits to GitLab periodically
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <div class="d-flex gap-2 mt-4">
+    <%= form.submit class: "btn btn-primary" do %>
+      <% if repository.new_record? %>
+        <i class="bi bi-plus-circle me-1"></i>Create Repository
+      <% else %>
+        <i class="bi bi-save me-1"></i>Update Repository
+      <% end %>
+    <% end %>
+    <% if repository.persisted? %>
+      <button type="button" class="btn btn-outline-success" id="validate-btn" data-repository-id="<%= repository.id %>">
+        <span class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
+        <i class="bi bi-check-circle me-1"></i>Validate Connection
+      </button>
+    <% end %>
+  </div>
+<% end %>
+
+<% if repository.persisted? %>
+  <div id="validation-result" class="mt-3"></div>
+<% end %>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const authTypeField = document.getElementById('repository_auth_type');
+  const usernameField = document.getElementById('username-field');
+  const passwordField = document.getElementById('password-field');
+  const sshKeyField = document.getElementById('ssh-key-field');
+
+  function toggleAuthFields() {
+    const authType = authTypeField.value;
+    
+    if (authType === 'ssh') {
+      usernameField.classList.add('d-none');
+      passwordField.classList.add('d-none');
+      sshKeyField.classList.remove('d-none');
+    } else {
+      usernameField.classList.remove('d-none');
+      passwordField.classList.remove('d-none');
+      sshKeyField.classList.add('d-none');
+    }
+  }
+
+  if (authTypeField) {
+    authTypeField.addEventListener('change', toggleAuthFields);
+    toggleAuthFields();
+  }
+
+  // Validation
+  const validateBtn = document.getElementById('validate-btn');
+  if (validateBtn) {
+    validateBtn.addEventListener('click', async function() {
+      const repositoryId = this.dataset.repositoryId;
+      const spinner = this.querySelector('.spinner-border');
+      const resultDiv = document.getElementById('validation-result');
+      
+      spinner.classList.remove('d-none');
+      this.disabled = true;
+      
+      try {
+        const response = await fetch(`/repositories/${repositoryId}/validate`, {
+          method: 'POST',
+          headers: {
+            'X-CSRF-Token': document.querySelector('[name="csrf-token"]').content,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          resultDiv.innerHTML = `
+            <div class="alert alert-success d-flex align-items-start">
+              <i class="bi bi-check-circle-fill me-2 fs-4"></i>
+              <div>
+                <h6 class="alert-heading">Connection Successful!</h6>
+                <ul class="mb-0">
+                  <li><strong>URL:</strong> ${result.info.url}</li>
+                  <li><strong>HEAD Revision:</strong> ${result.info.head_revision}</li>
+                  <li><strong>Total Commits:</strong> ${result.info.commit_count}</li>
+                  <li><strong>Last Changed:</strong> ${result.info.last_changed_date}</li>
+                </ul>
+              </div>
+            </div>
+          `;
+        } else {
+          resultDiv.innerHTML = `
+            <div class="alert alert-danger d-flex align-items-start">
+              <i class="bi bi-exclamation-triangle-fill me-2 fs-4"></i>
+              <div>
+                <h6 class="alert-heading">Validation Failed</h6>
+                <ul class="mb-0">
+                  ${result.errors.map(error => `<li>${error}</li>`).join('')}
+                </ul>
+              </div>
+            </div>
+          `;
+        }
+      } catch (error) {
+        resultDiv.innerHTML = `
+          <div class="alert alert-danger d-flex align-items-start">
+            <i class="bi bi-exclamation-triangle-fill me-2 fs-4"></i>
+            <div>
+              <h6 class="alert-heading">Error</h6>
+              <p class="mb-0">An error occurred during validation: ${error.message}</p>
+            </div>
+          </div>
+        `;
+      } finally {
+        spinner.classList.add('d-none');
+        this.disabled = false;
+      }
+    });
+  }
+});
+</script>

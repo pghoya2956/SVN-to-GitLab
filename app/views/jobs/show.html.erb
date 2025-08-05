@@ -1,0 +1,225 @@
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-md-12">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Job #<%= @job.id %> - <%= @job.repository.name %></h2>
+        <div>
+          <%= link_to "All Jobs", jobs_path, class: "btn btn-secondary" %>
+          <%= link_to "Repository", @job.repository, class: "btn btn-secondary" %>
+        </div>
+      </div>
+      
+      <% if @job.running? && @job.job_type == 'migration' %>
+        <div class="mb-4">
+          <%= render 'progress_monitor', job: @job %>
+        </div>
+      <% end %>
+      
+      <div class="row">
+        <div class="col-md-8">
+          <div class="card mb-4">
+            <div class="card-header">
+              <h5 class="mb-0">Job Status</h5>
+            </div>
+            <div class="card-body">
+              <dl class="row">
+                <dt class="col-sm-3">Status:</dt>
+                <dd class="col-sm-9">
+                  <span class="badge bg-<%= job_status_color(@job.status) %> fs-6">
+                    <%= @job.status.capitalize %>
+                  </span>
+                </dd>
+                
+                <dt class="col-sm-3">Type:</dt>
+                <dd class="col-sm-9"><%= @job.job_type.humanize %></dd>
+                
+                <dt class="col-sm-3">Started:</dt>
+                <dd class="col-sm-9">
+                  <%= @job.started_at ? @job.started_at.strftime("%Y-%m-%d %H:%M:%S") : "-" %>
+                </dd>
+                
+                <dt class="col-sm-3">Completed:</dt>
+                <dd class="col-sm-9">
+                  <%= @job.completed_at ? @job.completed_at.strftime("%Y-%m-%d %H:%M:%S") : "-" %>
+                </dd>
+                
+                <dt class="col-sm-3">Duration:</dt>
+                <dd class="col-sm-9"><%= @job.formatted_duration %></dd>
+                
+                <% if @job.result_url.present? %>
+                  <dt class="col-sm-3">Result:</dt>
+                  <dd class="col-sm-9">
+                    <%= link_to "View in GitLab", @job.result_url, 
+                        target: "_blank", rel: "noopener", class: "btn btn-success" %>
+                  </dd>
+                <% end %>
+              </dl>
+              
+              <% if @job.active? %>
+                <div class="progress mt-3" style="height: 30px;">
+                  <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                       role="progressbar" 
+                       style="width: <%= @job.progress_percentage %>%"
+                       aria-valuenow="<%= @job.progress_percentage %>" 
+                       aria-valuemin="0" 
+                       aria-valuemax="100">
+                    <%= @job.progress_percentage %>%
+                  </div>
+                </div>
+                
+                <div class="mt-2 text-center">
+                  <small class="text-muted">
+                    Processed <%= @job.processed_commits %> of <%= @job.total_commits || "?" %> commits
+                  </small>
+                </div>
+              <% end %>
+            </div>
+          </div>
+          
+          <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h5 class="mb-0">Logs</h5>
+              <div>
+                <%= link_to "Download Logs", logs_job_path(@job, format: :text), 
+                    class: "btn btn-sm btn-outline-secondary" %>
+                <% if @job.active? %>
+                  <button class="btn btn-sm btn-outline-primary" id="refresh-logs">
+                    Auto-refresh: <span id="refresh-status">ON</span>
+                  </button>
+                <% end %>
+              </div>
+            </div>
+            <div class="card-body">
+              <ul class="nav nav-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active" id="output-tab" data-bs-toggle="tab" 
+                          data-bs-target="#output" type="button" role="tab">
+                    Output Log
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="error-tab" data-bs-toggle="tab" 
+                          data-bs-target="#error" type="button" role="tab">
+                    Error Log
+                    <% if @job.error_log.present? %>
+                      <span class="badge bg-danger">!</span>
+                    <% end %>
+                  </button>
+                </li>
+              </ul>
+              
+              <div class="tab-content">
+                <div class="tab-pane fade show active" id="output" role="tabpanel">
+                  <pre class="bg-dark text-light p-3 mt-3" style="height: 400px; overflow-y: auto;">
+<%= @job.output_log || "No output yet..." %>
+                  </pre>
+                </div>
+                <div class="tab-pane fade" id="error" role="tabpanel">
+                  <pre class="bg-dark text-light p-3 mt-3" style="height: 400px; overflow-y: auto;">
+<%= @job.error_log || "No errors" %>
+                  </pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="col-md-4">
+          <div class="card mb-4">
+            <div class="card-header">
+              <h5 class="mb-0">Actions</h5>
+            </div>
+            <div class="card-body">
+              <% if @job.active? %>
+                <%= link_to "Cancel Job", cancel_job_path(@job), 
+                    data: { 
+                      "turbo-method": :post,
+                      "turbo-confirm": "Are you sure you want to cancel this job?"
+                    },
+                    class: "btn btn-danger w-100" %>
+              <% elsif @job.failed? %>
+                <%= link_to "Retry Migration", new_repository_job_path(@job.repository), 
+                    class: "btn btn-warning w-100" %>
+              <% elsif @job.completed? %>
+                <%= link_to "Run Another Migration", new_repository_job_path(@job.repository), 
+                    class: "btn btn-primary w-100" %>
+              <% end %>
+            </div>
+          </div>
+          
+          <div class="card">
+            <div class="card-header">
+              <h5 class="mb-0">Job Parameters</h5>
+            </div>
+            <div class="card-body">
+              <% params = @job.parsed_parameters %>
+              <dl class="row small">
+                <% params.each do |key, value| %>
+                  <dt class="col-sm-6"><%= key.humanize %>:</dt>
+                  <dd class="col-sm-6"><%= value %></dd>
+                <% end %>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% if @job.active? %>
+  <script>
+    let refreshInterval;
+    let refreshEnabled = true;
+    
+    function updateJobStatus() {
+      if (!refreshEnabled) return;
+      
+      fetch('<%= job_path(@job, format: :json) %>')
+        .then(response => response.json())
+        .then(data => {
+          // Update progress
+          const progressBar = document.querySelector('.progress-bar');
+          if (progressBar) {
+            progressBar.style.width = data.progress + '%';
+            progressBar.setAttribute('aria-valuenow', data.progress);
+            progressBar.textContent = data.progress + '%';
+          }
+          
+          // Update logs
+          const outputLog = document.querySelector('#output pre');
+          if (outputLog && data.last_output) {
+            outputLog.textContent = data.last_output;
+            outputLog.scrollTop = outputLog.scrollHeight;
+          }
+          
+          // Reload page if job finished
+          if (data.status !== 'pending' && data.status !== 'running') {
+            clearInterval(refreshInterval);
+            location.reload();
+          }
+        });
+    }
+    
+    // Toggle auto-refresh
+    document.getElementById('refresh-logs').addEventListener('click', function() {
+      refreshEnabled = !refreshEnabled;
+      document.getElementById('refresh-status').textContent = refreshEnabled ? 'ON' : 'OFF';
+    });
+    
+    // Start auto-refresh
+    refreshInterval = setInterval(updateJobStatus, 3000);
+  </script>
+<% end %>
+
+<%# Helper method for status colors %>
+<% def job_status_color(status)
+  case status
+  when 'pending' then 'secondary'
+  when 'running' then 'primary'
+  when 'completed' then 'success'
+  when 'failed' then 'danger'
+  when 'cancelled' then 'warning'
+  else 'secondary'
+  end
+end %>

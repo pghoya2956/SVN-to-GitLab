@@ -1,0 +1,173 @@
+<div class="progress-monitor" data-job-id="<%= job.id %>">
+  <h4>마이그레이션 진행 상황</h4>
+  
+  <!-- 전체 진행률 -->
+  <div class="overall-progress mb-4">
+    <div class="d-flex justify-content-between mb-2">
+      <span>전체 진행률</span>
+      <span class="progress-percentage"><%= job.progress %>%</span>
+    </div>
+    <div class="progress" style="height: 30px;">
+      <div class="progress-bar progress-bar-striped progress-bar-animated migration-progress-bar" 
+           role="progressbar" 
+           style="width: <%= job.progress %>%"
+           aria-valuenow="<%= job.progress %>" 
+           aria-valuemin="0" 
+           aria-valuemax="100">
+        <%= job.progress %>%
+      </div>
+    </div>
+  </div>
+  
+  <!-- 상세 정보 -->
+  <div class="row">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">진행 상태</h5>
+          <dl class="row">
+            <dt class="col-sm-6">처리 중인 리비전:</dt>
+            <dd class="col-sm-6" id="current-revision">
+              <%= job.current_revision || 0 %> / <%= job.total_revisions || '계산 중' %>
+            </dd>
+            
+            <dt class="col-sm-6">경과 시간:</dt>
+            <dd class="col-sm-6" id="elapsed-time">
+              <%= job.formatted_duration %>
+            </dd>
+            
+            <dt class="col-sm-6">예상 완료 시간:</dt>
+            <dd class="col-sm-6" id="eta"><%= job.formatted_eta %></dd>
+            
+            <dt class="col-sm-6">처리 속도:</dt>
+            <dd class="col-sm-6" id="processing-speed">
+              <%= job.processing_speed ? "#{job.processing_speed.round(2)} 리비전/초" : "-" %>
+            </dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+    
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">현재 처리 중</h5>
+          <p class="current-commit" id="current-commit">-</p>
+          
+          <h6 class="mt-3">처리 속도 추이</h6>
+          <canvas id="progress-chart" width="400" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 단계별 진행 상황 -->
+  <div class="stage-progress mt-4">
+    <h5>단계별 진행 상황</h5>
+    <div class="list-group">
+      <div class="list-group-item <%= 'list-group-item-success' if job.progress > 0 %>">
+        <div class="d-flex w-100 justify-content-between">
+          <h6 class="mb-1">1. SVN 저장소 검증</h6>
+          <small><%= job.progress > 0 ? '완료' : '대기' %></small>
+        </div>
+      </div>
+      
+      <div class="list-group-item <%= 'list-group-item-success' if job.progress > 10 %>">
+        <div class="d-flex w-100 justify-content-between">
+          <h6 class="mb-1">2. Git 저장소 초기화</h6>
+          <small><%= job.progress > 10 ? '완료' : '대기' %></small>
+        </div>
+      </div>
+      
+      <div class="list-group-item <%= 'list-group-item-info' if job.progress.between?(20, 70) %>">
+        <div class="d-flex w-100 justify-content-between">
+          <h6 class="mb-1">3. SVN 커밋 이력 변환 (git-svn clone)</h6>
+          <small><%= job.progress.between?(20, 70) ? '진행 중' : (job.progress > 70 ? '완료' : '대기') %></small>
+        </div>
+        <% if job.progress.between?(20, 70) %>
+          <div class="progress mt-2" style="height: 10px;">
+            <div class="progress-bar" style="width: <%= ((job.progress - 20) / 50.0 * 100).to_i %>%"></div>
+          </div>
+        <% end %>
+      </div>
+      
+      <div class="list-group-item <%= 'list-group-item-info' if job.progress.between?(71, 79) %>">
+        <div class="d-flex w-100 justify-content-between">
+          <h6 class="mb-1">4. 마이그레이션 전략 적용</h6>
+          <small><%= job.progress.between?(71, 79) ? '진행 중' : (job.progress > 79 ? '완료' : '대기') %></small>
+        </div>
+      </div>
+      
+      <div class="list-group-item <%= 'list-group-item-info' if job.progress.between?(80, 99) %>">
+        <div class="d-flex w-100 justify-content-between">
+          <h6 class="mb-1">5. GitLab으로 푸시</h6>
+          <small><%= job.progress.between?(80, 99) ? '진행 중' : (job.progress == 100 ? '완료' : '대기') %></small>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script type="module">
+  document.addEventListener('DOMContentLoaded', function() {
+    const jobId = <%= job.id %>;
+    
+    // Chart.js를 사용한 진행률 그래프
+    const ctx = document.getElementById('progress-chart').getContext('2d');
+    const progressChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: '처리 속도 (리비전/초)',
+          data: [],
+          borderColor: 'rgb(75, 192, 192)',
+          backgroundColor: 'rgba(75, 192, 192, 0.1)',
+          tension: 0.1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: '리비전/초'
+            }
+          },
+          x: {
+            title: {
+              display: true,
+              text: '시간'
+            }
+          }
+        }
+      }
+    });
+    
+    // 차트 업데이트 함수를 전역으로 노출
+    window.updateProgressChart = function(speed) {
+      const now = new Date().toLocaleTimeString('ko-KR');
+      progressChart.data.labels.push(now);
+      progressChart.data.datasets[0].data.push(speed);
+      
+      // 최대 20개 데이터만 유지
+      if (progressChart.data.labels.length > 20) {
+        progressChart.data.labels.shift();
+        progressChart.data.datasets[0].data.shift();
+      }
+      
+      progressChart.update();
+    }
+    
+    // 진행 중인 job만 ActionCable 구독
+    <% if job.running? %>
+      import('channels/job_progress_channel').then(({ subscribeToJobProgress }) => {
+        const subscription = subscribeToJobProgress(jobId);
+      });
+    <% end %>
+  });
+</script>

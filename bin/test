@@ -1,0 +1,21 @@
+#!/bin/bash
+set -e
+
+echo "=== Running Tests ==="
+
+# Check if Docker is running
+if ! docker info > /dev/null 2>&1; then
+  echo "❌ Docker is not running. Please start Docker and try again."
+  exit 1
+fi
+
+echo "🗄️  Setting up test database..."
+docker compose run --rm -e RAILS_ENV=test web rails db:create db:migrate
+
+echo "🧪 Running Rails tests..."
+docker compose run --rm -e RAILS_ENV=test web rails test
+
+echo "🎭 Running Playwright tests..."
+docker compose run --rm web npx playwright test
+
+echo "✅ All tests complete!"

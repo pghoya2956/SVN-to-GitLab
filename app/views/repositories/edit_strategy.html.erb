@@ -1,0 +1,184 @@
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-md-12">
+      <h2>Migration Strategy for <%= @repository.name %></h2>
+      
+      <%= form_with(model: @repository, url: update_strategy_repository_path(@repository), method: :patch, local: true) do |form| %>
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="mb-0">Basic Settings</h5>
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <%= form.label :migration_method, "Migration Method", class: "form-label" %>
+                  <%= form.select :migration_method, 
+                      options_for_select({ 
+                        'Simple (Fast, No History)' => 'simple', 
+                        'Git-SVN (Full History)' => 'full_history' 
+                      }, @repository.migration_method),
+                      {}, class: "form-select" %>
+                  <div class="form-text">
+                    Choose between fast migration (no history) or full history preservation
+                  </div>
+                </div>
+                
+                <div class="mb-3">
+                  <%= form.label :migration_type, class: "form-label" %>
+                  <%= form.select :migration_type, 
+                      options_for_select(Repositories::MigrationStrategyService::MIGRATION_TYPES.invert, @repository.migration_type),
+                      {}, class: "form-select" %>
+                  <div class="form-text">
+                    Choose migration speed vs. completeness trade-off
+                  </div>
+                </div>
+                
+                <div class="mb-3">
+                  <div class="form-check">
+                    <%= form.check_box :preserve_history, class: "form-check-input" %>
+                    <%= form.label :preserve_history, "Preserve full commit history", class: "form-check-label" %>
+                  </div>
+                  <div class="form-text">
+                    Uncheck for faster migration with limited history
+                  </div>
+                </div>
+                
+                <div class="mb-3">
+                  <%= form.label :commit_message_prefix, class: "form-label" %>
+                  <%= form.text_field :commit_message_prefix, class: "form-control", 
+                      placeholder: "[SVN-MIGRATION]" %>
+                  <div class="form-text">
+                    Optional prefix for all migrated commits
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="mb-0">Branch & Tag Strategy</h5>
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <%= form.label :branch_strategy, class: "form-label" %>
+                  <%= form.select :branch_strategy, 
+                      options_for_select(Repositories::MigrationStrategyService::BRANCH_STRATEGIES.invert, @repository.branch_strategy),
+                      {}, class: "form-select" %>
+                </div>
+                
+                <div class="mb-3">
+                  <%= form.label :tag_strategy, class: "form-label" %>
+                  <%= form.select :tag_strategy, 
+                      options_for_select(Repositories::MigrationStrategyService::TAG_STRATEGIES.invert, @repository.tag_strategy),
+                      {}, class: "form-select" %>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="mb-0">Large File Handling</h5>
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <%= form.label :large_file_handling, "Strategy", class: "form-label" %>
+                  <%= form.select :large_file_handling, 
+                      options_for_select(Repositories::MigrationStrategyService::LARGE_FILE_STRATEGIES.invert, @repository.large_file_handling),
+                      {}, class: "form-select" %>
+                  <div class="form-text">
+                    How to handle files exceeding the size limit
+                  </div>
+                </div>
+                
+                <div class="mb-3">
+                  <%= form.label :max_file_size_mb, "Max file size (MB)", class: "form-label" %>
+                  <%= form.number_field :max_file_size_mb, class: "form-control", 
+                      min: 1, max: 1000 %>
+                  <div class="form-text">
+                    Files larger than this will be handled according to the strategy above
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="mb-0">Authors Mapping</h5>
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <%= form.label :authors_mapping, class: "form-label" %>
+                  <%= form.text_area :authors_mapping, class: "form-control font-monospace", 
+                      rows: 6, placeholder: "svnuser1 = Git User 1 <user1@example.com>\nsvnuser2 = Git User 2 <user2@example.com>" %>
+                  <div class="form-text">
+                    Map SVN usernames to Git author format (one per line)
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="card mb-4">
+              <div class="card-header">
+                <h5 class="mb-0">Ignore Patterns</h5>
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <%= form.label :ignore_patterns, class: "form-label" %>
+                  <%= form.text_area :ignore_patterns, class: "form-control font-monospace", 
+                      rows: 6, placeholder: "*.log\n*.tmp\nbuild/\nnode_modules/" %>
+                  <div class="form-text">
+                    Files/directories to exclude (one pattern per line, gitignore syntax)
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <% if @strategy_service.validate_strategy.any? %>
+          <div class="alert alert-danger">
+            <h6>Strategy validation errors:</h6>
+            <ul class="mb-0">
+              <% @strategy_service.validate_strategy.each do |error| %>
+                <li><%= error %></li>
+              <% end %>
+            </ul>
+          </div>
+        <% end %>
+        
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0">Migration Summary</h5>
+          </div>
+          <div class="card-body">
+            <% summary = @strategy_service.migration_summary %>
+            <dl class="row">
+              <dt class="col-sm-3">Migration Type:</dt>
+              <dd class="col-sm-9"><%= summary[:type] %></dd>
+              
+              <dt class="col-sm-3">Preserve History:</dt>
+              <dd class="col-sm-9"><%= summary[:preserve_history] ? "Yes" : "No" %></dd>
+              
+              <dt class="col-sm-3">Branch Strategy:</dt>
+              <dd class="col-sm-9"><%= summary[:branch_strategy] %></dd>
+              
+              <dt class="col-sm-3">Tag Strategy:</dt>
+              <dd class="col-sm-9"><%= summary[:tag_strategy] %></dd>
+              
+              <dt class="col-sm-3">Estimated Time:</dt>
+              <dd class="col-sm-9"><%= summary[:estimated_time_minutes] %> minutes</dd>
+            </dl>
+          </div>
+        </div>
+        
+        <div class="d-flex justify-content-between">
+          <%= form.submit "Save Strategy", class: "btn btn-primary" %>
+          <%= link_to "Cancel", @repository, class: "btn btn-secondary" %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,80 @@
+#!/bin/bash
+set -e
+
+# Development helper script
+
+case "$1" in
+  "start")
+    echo "Starting development environment..."
+    docker compose -f docker-compose.dev.yml up -d
+    echo "Waiting for services to be ready..."
+    sleep 5
+    docker compose -f docker-compose.dev.yml exec web rails db:prepare
+    echo "Development environment is ready at http://localhost:3000"
+    ;;
+    
+  "stop")
+    echo "Stopping development environment..."
+    docker compose -f docker-compose.dev.yml down
+    ;;
+    
+  "restart")
+    echo "Restarting web service..."
+    docker compose -f docker-compose.dev.yml restart web
+    ;;
+    
+  "logs")
+    docker compose -f docker-compose.dev.yml logs -f "${2:-web}"
+    ;;
+    
+  "exec")
+    shift
+    docker compose -f docker-compose.dev.yml exec web "$@"
+    ;;
+    
+  "build")
+    echo "Building with cache optimization..."
+    DOCKER_BUILDKIT=1 docker compose -f docker-compose.dev.yml build --build-arg BUILDKIT_INLINE_CACHE=1
+    ;;
+    
+  "bundle")
+    echo "Installing gems..."
+    docker compose -f docker-compose.dev.yml exec web bundle install
+    docker compose -f docker-compose.dev.yml restart web sidekiq
+    ;;
+    
+  "migrate")
+    docker compose -f docker-compose.dev.yml exec web rails db:migrate
+    ;;
+    
+  "console")
+    docker compose -f docker-compose.dev.yml exec web rails console
+    ;;
+    
+  "test")
+    docker compose -f docker-compose.dev.yml exec web rails test
+    ;;
+    
+  "clean")
+    echo "Cleaning up volumes and containers..."
+    docker compose -f docker-compose.dev.yml down -v
+    ;;
+    
+  *)
+    echo "Usage: bin/dev {start|stop|restart|logs|exec|build|bundle|migrate|console|test|clean}"
+    echo ""
+    echo "Commands:"
+    echo "  start    - Start all services"
+    echo "  stop     - Stop all services"
+    echo "  restart  - Restart web service"
+    echo "  logs     - Show logs (optional: service name)"
+    echo "  exec     - Execute command in web container"
+    echo "  build    - Build with cache optimization"
+    echo "  bundle   - Install gems and restart services"
+    echo "  migrate  - Run database migrations"
+    echo "  console  - Open Rails console"
+    echo "  test     - Run tests"
+    echo "  clean    - Remove all containers and volumes"
+    exit 1
+    ;;
+esac
