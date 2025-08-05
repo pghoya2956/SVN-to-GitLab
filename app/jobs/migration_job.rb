@@ -80,11 +80,17 @@ class MigrationJob
     @job.append_output("Cloning SVN repository with git-svn...")
     @job.update(progress: 20)
     
-    # Create temporary directory
-    temp_dir = Rails.root.join('tmp', 'migrations', @job.id.to_s)
-    FileUtils.mkdir_p(temp_dir)
+    # Use persistent directory for git repos
+    git_repos_dir = Rails.root.join('git_repos', "repository_#{@repository.id}")
+    FileUtils.mkdir_p(git_repos_dir)
     
-    git_path = temp_dir.join('git_repo')
+    git_path = git_repos_dir.join('git_repo')
+    
+    # 기존 디렉토리가 있으면 삭제 (재시작 시)
+    if File.directory?(git_path)
+      FileUtils.rm_rf(git_path)
+      @job.append_output("Removed existing git repository directory")
+    end
     
     # 즉시 local_git_path 저장 (진행률 추적용)
     @repository.update!(local_git_path: git_path.to_s)

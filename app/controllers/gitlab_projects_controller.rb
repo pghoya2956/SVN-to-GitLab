@@ -1,5 +1,4 @@
 class GitlabProjectsController < ApplicationController
-  before_action :authenticate_user!
   before_action :ensure_gitlab_token
   before_action :load_repository
 

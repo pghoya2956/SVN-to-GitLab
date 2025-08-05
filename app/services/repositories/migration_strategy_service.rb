@@ -162,6 +162,7 @@ module Repositories
     
     def strategy_params(params)
       params.permit(
+        :migration_method,
         :migration_type,
         :preserve_history,
         :authors_mapping,

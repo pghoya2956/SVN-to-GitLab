@@ -1,3 +1,6 @@
+require 'open3'
+require 'fileutils'
+
 class IncrementalSyncJob
   include Sidekiq::Job
   
@@ -54,6 +57,13 @@ class IncrementalSyncJob
   private
   
   def perform_incremental_sync
+    # Simple migration은 증분 동기화 지원 안함
+    if @repository.migration_method == 'simple'
+      @job.append_output("Incremental sync is not supported for simple migration method.")
+      @job.append_output("Please re-migrate with 'full_history' method to enable incremental sync.")
+      raise "Incremental sync is not supported for simple migration method. Please re-migrate with 'full_history' method to enable incremental sync."
+    end
+    
     validate_git_svn_repository!
     
     git_dir = @repository.local_git_path
@@ -74,8 +84,15 @@ class IncrementalSyncJob
   end
   
   def validate_git_svn_repository!
-    unless @repository.local_git_path.present? && File.directory?(@repository.local_git_path)
-      raise "Local git repository not found. Please run migration first."
+    unless @repository.local_git_path.present?
+      raise "Local git path not configured. Please run migration first."
+    end
+    
+    unless File.directory?(@repository.local_git_path)
+      # 디렉토리가 없으면 SVN에서 다시 clone
+      @job.append_output("Local git repository not found. Re-cloning from SVN...")
+      clone_from_svn
+      return
     end
     
     # git-svn 저장소인지 확인
@@ -85,6 +102,67 @@ class IncrementalSyncJob
         raise "Not a git-svn repository. Please re-migrate with git-svn."
       end
     end
+  end
+  
+  def clone_from_svn
+    @job.append_output("Creating git-svn clone for incremental sync...")
+    
+    # 디렉토리 생성
+    FileUtils.mkdir_p(File.dirname(@repository.local_git_path))
+    
+    # git svn clone 명령 구성
+    cmd = ['git', 'svn', 'clone']
+    
+    # 인증 정보 추가
+    if @repository.auth_type == 'basic' && @repository.username.present?
+      cmd += ['--username', @repository.username]
+    end
+    
+    # SVN 구조에 따른 옵션 추가
+    if @repository.svn_structure.present?
+      structure = @repository.svn_structure
+      cmd << '--stdlayout' if structure['layout'] == 'standard'
+      cmd += ['--trunk', structure['trunk']] if structure['trunk'].present?
+      cmd += ['--branches', structure['branches']] if structure['branches'].present?
+      cmd += ['--tags', structure['tags']] if structure['tags'].present?
+    else
+      cmd << '--stdlayout'
+    end
+    
+    # authors 파일이 있으면 사용
+    authors_file_path = Rails.root.join('tmp', 'authors', "repository_#{@repository.id}_authors.txt")
+    if File.exist?(authors_file_path)
+      cmd += ['--authors-file', authors_file_path.to_s]
+    end
+    
+    # 마지막 동기화된 리비전부터 시작
+    if @repository.last_synced_revision.present? && @repository.last_synced_revision > 0
+      start_revision = [@repository.last_synced_revision - 100, 1].max  # 100개 이전부터 시작
+      cmd += ['-r', "#{start_revision}:HEAD"]
+    else
+      # 최근 1000개 커밋만 가져오기 (빠른 복구를 위해)
+      cmd += ['-r', 'HEAD~1000:HEAD']
+    end
+    
+    cmd += [@repository.svn_url, @repository.local_git_path]
+    
+    # Clone 실행
+    Open3.popen3(*cmd) do |stdin, stdout, stderr, wait_thr|
+      # 비밀번호 입력이 필요한 경우
+      if @repository.auth_type == 'basic' && @repository.password.present?
+        stdin.puts @repository.password
+        stdin.close
+      end
+      
+      stdout.each_line { |line| @job.append_output("Clone: #{line.strip}") }
+      stderr.each_line { |line| @job.append_output("Clone: #{line.strip}") }
+      
+      unless wait_thr.value.success?
+        raise "Failed to clone from SVN"
+      end
+    end
+    
+    @job.append_output("Git-svn clone completed. Repository ready for incremental sync.")
   end
   
   def save_current_state
