@@ -92,8 +92,8 @@
             <div class="info-compact">
               <% if repository.migration_type.present? %>
                 <div class="strategy-summary">
-                  <span class="badge bg-<%= repository.migration_method == 'full_history' ? 'success' : 'secondary' %> mb-2">
-                    <%= repository.migration_method == 'full_history' ? '전체 이력 보존' : '최신 파일만' %>
+                  <span class="badge bg-<%= repository.migration_method == 'git-svn' ? 'success' : 'secondary' %> mb-2">
+                    <%= repository.migration_method == 'git-svn' ? '전체 이력 보존' : '최신 파일만' %>
                   </span>
                   <div class="small text-muted">
                     타입: <%= repository.migration_type.humanize %><br>

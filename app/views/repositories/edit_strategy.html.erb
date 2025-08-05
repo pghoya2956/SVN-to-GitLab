@@ -16,7 +16,7 @@
                   <%= form.select :migration_method, 
                       options_for_select({ 
                         'Simple (Fast, No History)' => 'simple', 
-                        'Git-SVN (Full History)' => 'full_history' 
+                        'Git-SVN (Full History)' => 'git-svn' 
                       }, @repository.migration_method),
                       {}, class: "form-select" %>
                   <div class="form-text">

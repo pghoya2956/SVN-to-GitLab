@@ -50,6 +50,7 @@ yarn-debug.log*
 postgres_data/
 redis_data/
 bundle_cache/
+git_repos/
 
 # Ignore OS files
 .DS_Store

@@ -16,11 +16,18 @@ module ProgressTrackable
         progress_data = calculate_progress
         broadcast_progress(progress_data)
         
+        # 체크포인트 저장 (5분마다)
+        save_checkpoint_if_needed
+        
         sleep 5
       end
     rescue => e
       Rails.logger.error "Progress tracking error: #{e.message}"
     end
+  end
+  
+  def track_progress_with_checkpoint
+    track_progress
   end
   
   private
@@ -129,5 +136,20 @@ module ProgressTrackable
   
   def job_running?
     @job.reload.status == 'running'
+  end
+  
+  def save_checkpoint_if_needed
+    @last_checkpoint_time ||= Time.current
+    
+    # 5분마다 또는 중요한 시점에 체크포인트 저장
+    if Time.current - @last_checkpoint_time > 5.minutes
+      @job.save_checkpoint!(
+        current_revision: get_current_revision,
+        elapsed_time: Time.current - @start_time,
+        progress_percentage: @job.progress
+      )
+      @last_checkpoint_time = Time.current
+      Rails.logger.info "Checkpoint saved for job #{@job.id}"
+    end
   end
 end

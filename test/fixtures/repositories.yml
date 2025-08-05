@@ -1,21 +1,22 @@
 # Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
 
 one:
-  name: MyString
-  svn_url: MyString
-  auth_type: MyString
-  username: MyString
-  encrypted_password: MyString
-  ssh_key: MyText
-  branch_option: MyString
+  name: Test Repository
+  svn_url: https://svn.example.com/test
+  auth_type: none
+  username: 
+  encrypted_password: 
+  ssh_key: 
+  branch_option: 
   user: one
+  local_git_path: /app/git_repos/test
 
 two:
-  name: MyString
-  svn_url: MyString
-  auth_type: MyString
-  username: MyString
-  encrypted_password: MyString
-  ssh_key: MyText
-  branch_option: MyString
+  name: Another Repository
+  svn_url: https://svn.example.com/another
+  auth_type: basic
+  username: testuser
+  encrypted_password: encrypted_pass
+  ssh_key: 
+  branch_option: 
   user: two

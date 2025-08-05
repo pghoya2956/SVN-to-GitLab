@@ -1,5 +1,5 @@
 class JobsController < ApplicationController
-  before_action :set_job, only: [:show, :cancel, :logs]
+  before_action :set_job, only: [:show, :cancel, :resume, :logs]
   before_action :set_repository, only: [:new, :create]
   
   def index
@@ -58,6 +58,21 @@ class JobsController < ApplicationController
       redirect_to @job, notice: "Job cancellation requested"
     else
       redirect_to @job, alert: "Cannot cancel a #{@job.status} job"
+    end
+  end
+  
+  def resume
+    if @job.can_resume?
+      # 재시도 카운트 증가
+      @job.increment!(:retry_count)
+      
+      # 새로운 Sidekiq job 시작
+      job_id = MigrationJob.perform_async(@job.id)
+      @job.update(sidekiq_job_id: job_id)
+      
+      redirect_to @job, notice: "마이그레이션이 마지막 체크포인트에서 재개되었습니다."
+    else
+      redirect_to @job, alert: "이 작업은 재개할 수 없습니다."
     end
   end
   

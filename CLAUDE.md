@@ -167,3 +167,5 @@ Key relationships:
 - `docs/tasks/GIT_SVN_TASKS.md`: Git-SVN 구현 태스크 진행 현황 (7개 태스크)
 - `docs/tasks/MIGRATION_REPLACEMENT_PLAN.md`: 코드 직접 수정 계획
 - `docs/tasks/T-001_*.md` ~ `T-008_*.md`: 개별 태스크 상세 문서
+- `docs/tasks/T-004_RESUMABLE_MIGRATION.md`: 긴 작업 재개 기능 구현 계획
+- `docs/CURRENT_MIGRATION_FLOW.md`: 현재 마이그레이션 동작 방식 상세 설명

@@ -2,26 +2,14 @@
 
 one:
   repository: one
-  status: MyString
-  gitlab_project_id: MyString
-  gitlab_namespace: MyString
-  progress: 1
-  error_message: MyText
-  started_at: 2025-07-24 16:36:57
-  completed_at: 2025-07-24 16:36:57
-  logs: MyText
-  last_migrated_revision: MyString
+  status: pending
+  job_type: migration
+  progress: 0
   user: one
 
 two:
   repository: two
-  status: MyString
-  gitlab_project_id: MyString
-  gitlab_namespace: MyString
-  progress: 1
-  error_message: MyText
-  started_at: 2025-07-24 16:36:57
-  completed_at: 2025-07-24 16:36:57
-  logs: MyText
-  last_migrated_revision: MyString
+  status: running
+  job_type: migration
+  progress: 50
   user: two

@@ -4,10 +4,13 @@
 
 ## 주요 기능
 
-- SVN 리포지토리를 GitLab으로 마이그레이션
-- 마이그레이션 전략 설정 (브랜치/태그, Git LFS, 작성자 매핑)
+- SVN 리포지토리를 GitLab으로 마이그레이션 (git-svn 사용)
+- Simple 모드 (최신 리비전만) / Full History 모드 (전체 커밋 이력) 지원
+- SVN 구조 자동 감지 (standard layout, trunk/branches/tags)
+- 마이그레이션 전략 설정 (브랜치/태그 매핑, Git LFS, 작성자 매핑)
 - 백그라운드 작업 처리 및 실시간 진행률 모니터링
-- 증분 동기화 (개발 중)
+- 재개 가능한 마이그레이션 (Resumable Migration)
+- 증분 동기화 지원
 
 ## 빠른 시작
 
@@ -46,4 +49,9 @@ docker compose run --rm web rails console
 
 ## 기술 스택
 
-Rails 7.1, PostgreSQL, Redis, Sidekiq, Docker
+- **Backend**: Rails 7.1, Ruby 3.2
+- **Frontend**: Turbo, Stimulus.js, Bootstrap 5
+- **Database**: PostgreSQL 15
+- **Background Jobs**: Sidekiq, Redis
+- **Infrastructure**: Docker, Docker Compose
+- **SVN Integration**: git-svn

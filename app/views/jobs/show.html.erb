@@ -9,6 +9,10 @@
         </div>
       </div>
       
+      <% if @job.job_type == 'migration' && @job.phase.present? && @job.phase != 'pending' %>
+        <%= render 'phase_progress', job: @job %>
+      <% end %>
+      
       <% if @job.running? && @job.job_type == 'migration' %>
         <div class="mb-4">
           <%= render 'progress_monitor', job: @job %>
@@ -45,6 +49,13 @@
                 
                 <dt class="col-sm-3">Duration:</dt>
                 <dd class="col-sm-9"><%= @job.formatted_duration %></dd>
+                
+                <% if @job.phase.present? && @job.phase != 'pending' %>
+                  <dt class="col-sm-3">Phase:</dt>
+                  <dd class="col-sm-9">
+                    <span class="badge bg-info"><%= Job::PHASES[@job.phase.to_sym] || @job.phase.humanize %></span>
+                  </dd>
+                <% end %>
                 
                 <% if @job.result_url.present? %>
                   <dt class="col-sm-3">Result:</dt>
@@ -138,7 +149,23 @@
                     },
                     class: "btn btn-danger w-100" %>
               <% elsif @job.failed? %>
-                <%= link_to "Retry Migration", new_repository_job_path(@job.repository), 
+                <% if @job.can_resume? %>
+                  <%= link_to "Resume Migration", resume_job_path(@job), 
+                      data: { 
+                        "turbo-method": :post,
+                        "turbo-confirm": "Resume migration from last checkpoint?"
+                      },
+                      class: "btn btn-success w-100 mb-2" %>
+                  <div class="alert alert-info">
+                    <small>
+                      <i class="bi bi-info-circle"></i>
+                      이 작업은 재개 가능합니다.<br>
+                      마지막 체크포인트: <%= @job.phase.humanize %><br>
+                      시도 횟수: <%= @job.retry_count %>/3
+                    </small>
+                  </div>
+                <% end %>
+                <%= link_to "Retry from Beginning", new_repository_job_path(@job.repository), 
                     class: "btn btn-warning w-100" %>
               <% elsif @job.completed? %>
                 <%= link_to "Run Another Migration", new_repository_job_path(@job.repository), 

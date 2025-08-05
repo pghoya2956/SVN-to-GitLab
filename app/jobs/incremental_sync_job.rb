@@ -24,7 +24,10 @@ class IncrementalSyncJob
     User.current = @user
     
     # 동시 실행 방지
-    return if @repository.has_active_sync_job?
+    if @repository.has_active_sync_job?
+      Rails.logger.warn "IncrementalSyncJob: Active sync job already exists for repository #{repository_id}"
+      return
+    end
     
     @job = @repository.jobs.create!(
       user: @user,
@@ -38,6 +41,7 @@ class IncrementalSyncJob
     )
     
     begin
+      Rails.logger.info "IncrementalSyncJob: Created job #{@job.id} for repository #{repository_id}"
       @job.mark_as_running!
       @job.append_output("Starting incremental sync with git-svn...")
       
@@ -47,7 +51,9 @@ class IncrementalSyncJob
       @job.append_output("Incremental sync completed successfully!")
       
     rescue => e
-      @job.mark_as_failed!(e.message)
+      Rails.logger.error "IncrementalSyncJob: Error for job #{@job&.id}: #{e.message}"
+      Rails.logger.error e.backtrace.join("\n")
+      @job.mark_as_failed!(e.message) if @job
       raise e
     ensure
       User.current = nil

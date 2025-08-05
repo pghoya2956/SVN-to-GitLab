@@ -1,10 +1,12 @@
 require_relative 'concerns/progress_trackable'
+require_relative 'concerns/resumable_errors'
 
 class MigrationJob
   include Sidekiq::Job
   include ProgressTrackable
+  include ResumableErrors
   
-  sidekiq_options retry: 3, dead: false
+  sidekiq_options retry: false  # 자동 재시도 비활성화 (수동 재개 사용)
   
   sidekiq_retry_in do |count, exception|
     case count
@@ -27,32 +29,20 @@ class MigrationJob
     User.current = @user
     
     begin
-      @job.mark_as_running!
-      @job.append_output("Starting SVN to GitLab migration with git-svn...")
-      
-      # 진행률 추적 시작
-      track_progress
-      
-      # Step 1: Validate repository access
-      validate_repository!
-      
-      # Step 2: Clone SVN repository with git-svn (이력 보존)
-      git_path = clone_svn_repository
-      
-      # Step 3: Apply migration strategy (simplified)
-      apply_migration_strategy(git_path)
-      
-      # Step 4: Push to GitLab
-      gitlab_url = push_to_gitlab(git_path)
-      
-      # Step 5: Save git path for incremental sync
-      @repository.update!(local_git_path: git_path)
-      @job.append_output("Saved local git path for incremental sync")
-      
-      @job.mark_as_completed!(gitlab_url)
-      @job.append_output("Migration completed successfully!")
+      # 재개 여부 확인
+      if should_resume?
+        resume_migration
+      else
+        start_fresh_migration
+      end
       
     rescue => e
+      Rails.logger.error "MigrationJob Error: #{e.message}"
+      Rails.logger.error e.backtrace.join("\n")
+      
+      # 에러 분류 및 재개 가능 여부 설정
+      handle_job_error(e) rescue nil
+      
       @job.mark_as_failed!(e.message)
       raise e
     ensure
@@ -61,6 +51,65 @@ class MigrationJob
   end
   
   private
+  
+  def should_resume?
+    @job.phase != 'pending' && 
+    @job.checkpoint_data.present? &&
+    @repository.local_git_path.present? &&
+    File.exist?(@repository.local_git_path)
+  end
+  
+  def resume_migration
+    @job.start_resume!
+    @job.append_output("이전 작업을 재개합니다...")
+    @job.append_output("마지막 체크포인트: #{@job.checkpoint_data['timestamp']}")
+    
+    # 진행률 추적 재시작
+    track_progress
+    
+    case @job.phase
+    when 'cloning'
+      resume_cloning
+    when 'applying_strategy'
+      resume_applying_strategy
+    when 'pushing'
+      resume_pushing
+    else
+      # 알 수 없는 단계면 처음부터
+      start_fresh_migration
+    end
+  end
+  
+  def start_fresh_migration
+    @job.mark_as_running!
+    @job.update_phase!('pending')
+    
+    migration_mode = @repository.migration_method == 'simple' ? 'Simple (latest revision only)' : 'Full History'
+    @job.append_output("Starting SVN to GitLab migration with git-svn (#{migration_mode} mode)...")
+    
+    # 진행률 추적 시작
+    track_progress
+    
+    # Step 1: Validate repository access
+    validate_repository!
+    
+    # Step 2: Clone SVN repository with git-svn (이력 보존)
+    git_path = clone_svn_repository
+    
+    # Step 3: Apply migration strategy (simplified)
+    apply_migration_strategy(git_path)
+    
+    # Step 4: Push to GitLab
+    gitlab_url = push_to_gitlab(git_path)
+    
+    # Step 5: Save git path for incremental sync
+    @repository.update!(local_git_path: git_path)
+    
+    @job.mark_as_completed!(gitlab_url)
+    @job.update_phase!('completed')
+    @job.append_output("Migration completed successfully!")
+    @job.append_output("GitLab repository: #{gitlab_url}")
+  end
   
   def validate_repository!
     @job.append_output("Validating SVN repository access...")
@@ -77,7 +126,13 @@ class MigrationJob
   end
   
   def clone_svn_repository
-    @job.append_output("Cloning SVN repository with git-svn...")
+    @job.update_phase!('cloning')
+    
+    if @repository.migration_method == 'simple'
+      @job.append_output("Cloning SVN repository (Simple mode - latest revision only)...")
+    else
+      @job.append_output("Cloning SVN repository with git-svn (Full history mode)...")
+    end
     @job.update(progress: 20)
     
     # Use persistent directory for git repos
@@ -86,26 +141,51 @@ class MigrationJob
     
     git_path = git_repos_dir.join('git_repo')
     
-    # 기존 디렉토리가 있으면 삭제 (재시작 시)
-    if File.directory?(git_path)
-      FileUtils.rm_rf(git_path)
-      @job.append_output("Removed existing git repository directory")
+    # 재개 가능한 경우 기존 디렉토리 유지
+    if File.directory?(git_path) && File.exist?("#{git_path}/.git/svn")
+      # 실제로 커밋이 있는지 확인
+      if has_git_commits?(git_path)
+        @job.append_output("기존 git-svn 저장소를 발견했습니다. 이어서 진행합니다...")
+        
+        # 즉시 local_git_path 저장
+        @repository.update!(local_git_path: git_path.to_s)
+        
+        # git svn fetch로 이어서 진행
+        execute_git_svn_fetch(git_path)
+      else
+        # git-svn 메타데이터는 있지만 커밋이 없는 경우
+        @job.append_output("git-svn 메타데이터는 있지만 커밋이 없습니다. 처음부터 다시 시작합니다.")
+        FileUtils.rm_rf(git_path)
+        # 아래의 새로 시작 로직으로 진행
+      end
+    else
+      # 새로 시작
+      if File.directory?(git_path)
+        FileUtils.rm_rf(git_path)
+        @job.append_output("기존 디렉토리 제거 (git-svn 메타데이터 없음)")
+      end
+      
+      # 즉시 local_git_path 저장 (진행률 추적용)
+      @repository.update!(local_git_path: git_path.to_s)
+      
+      # Build git svn clone command
+      cmd = build_git_svn_command(git_path)
+      
+      # Execute git svn clone
+      execute_git_svn_clone(cmd, git_path)
     end
-    
-    # 즉시 local_git_path 저장 (진행률 추적용)
-    @repository.update!(local_git_path: git_path.to_s)
-    
-    # Build git svn clone command
-    cmd = build_git_svn_command(git_path)
-    
-    # Execute git svn clone
-    execute_git_svn_clone(cmd, git_path)
     
     git_path.to_s
   end
   
   def build_git_svn_command(target_path)
     cmd = ['git', 'svn', 'clone']
+    
+    # Simple mode: 최신 리비전만 가져오기
+    if @repository.migration_method == 'simple'
+      cmd += ['-r', 'HEAD']
+      @job.append_output("Using simple mode: fetching only the latest revision")
+    end
     
     # SVN 레이아웃 옵션
     if @repository.standard_layout?
@@ -173,6 +253,45 @@ class MigrationJob
   end
   
   
+  def execute_git_svn_fetch(git_path)
+    Dir.chdir(git_path) do
+      # 현재 상태 확인
+      last_rev = get_last_fetched_revision(git_path)
+      @job.append_output("마지막으로 가져온 리비전: r#{last_rev}")
+      
+      # git svn fetch 실행
+      cmd = ['git', 'svn', 'fetch']
+      
+      Open3.popen3(*cmd) do |stdin, stdout, stderr, wait_thr|
+        stdout.each_line do |line|
+          @job.append_output("git-svn: #{line.strip}")
+          update_progress_from_git_svn(line)
+        end
+        
+        stderr.each_line do |line|
+          @job.append_output("git-svn: #{line.strip}")
+        end
+        
+        unless wait_thr.value.success?
+          error_output = stderr.read if stderr
+          @job.append_error("git svn fetch failed: #{error_output}")
+          raise "git svn fetch failed: #{error_output}"
+        end
+      end
+    end
+    
+    @job.update(progress: 70)
+  end
+  
+  def get_last_fetched_revision(git_path)
+    Dir.chdir(git_path) do
+      output = `git svn info 2>/dev/null | grep 'Last Changed Rev' | awk '{print $4}'`.strip
+      output.empty? ? 0 : output.to_i
+    end
+  rescue
+    0
+  end
+  
   def update_progress_from_git_svn(line)
     # r1234 = abc123... 형식의 출력 파싱
     if line =~ /^r(\d+) = ([a-f0-9]+)/
@@ -196,6 +315,7 @@ class MigrationJob
   end
   
   def apply_migration_strategy(git_path)
+    @job.update_phase!('applying_strategy')
     @job.append_output("Applying migration strategy...")
     @job.update(progress: 75)
     
@@ -259,6 +379,7 @@ class MigrationJob
   end
   
   def push_to_gitlab(git_path)
+    @job.update_phase!('pushing')
     @job.append_output("Pushing to GitLab...")
     @job.update(progress: 80)
     
@@ -339,5 +460,67 @@ class MigrationJob
     
     @job.append_output("Created authors file with #{@repository.authors_mapping.size} mappings")
     authors_file_path.to_s
+  end
+  
+  # 재개 메서드들
+  def resume_cloning
+    @job.append_output("Clone 단계에서 재개합니다...")
+    
+    git_path = @repository.local_git_path
+    
+    if File.exist?("#{git_path}/.git/svn")
+      # git svn fetch로 이어서 진행
+      execute_git_svn_fetch(git_path)
+      
+      # 다음 단계로
+      apply_migration_strategy(git_path)
+      push_to_gitlab(git_path)
+      
+      @job.mark_as_completed!(@repository.gitlab_project_url)
+      @job.update_phase!('completed')
+    else
+      # git-svn이 없으면 처음부터
+      @job.append_output("git-svn 메타데이터가 없습니다. 처음부터 다시 시작합니다.")
+      start_fresh_migration
+    end
+  end
+  
+  def resume_applying_strategy
+    @job.append_output("전략 적용 단계에서 재개합니다...")
+    
+    git_path = @repository.local_git_path
+    
+    # 전략 적용 계속
+    apply_migration_strategy(git_path)
+    
+    # 다음 단계
+    push_to_gitlab(git_path)
+    
+    @job.mark_as_completed!(@repository.gitlab_project_url)
+    @job.update_phase!('completed')
+  end
+  
+  def resume_pushing
+    @job.append_output("Push 단계에서 재개합니다...")
+    
+    git_path = @repository.local_git_path
+    
+    # Push 재시도
+    gitlab_url = push_to_gitlab(git_path)
+    
+    @job.mark_as_completed!(gitlab_url)
+    @job.update_phase!('completed')
+  end
+  
+  private
+  
+  def has_git_commits?(git_path)
+    Dir.chdir(git_path) do
+      # git log로 커밋이 있는지 확인
+      result = `git log --oneline -1 2>/dev/null`
+      !result.strip.empty?
+    end
+  rescue
+    false
   end
 end

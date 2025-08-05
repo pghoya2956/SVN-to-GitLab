@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_08_03_112305) do
+ActiveRecord::Schema[7.1].define(version: 2025_08_05_100644) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -50,9 +50,16 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_03_112305) do
     t.integer "total_revisions"
     t.float "processing_speed"
     t.integer "eta_seconds"
+    t.string "phase", default: "pending"
+    t.jsonb "phase_details", default: {}
+    t.boolean "resumable", default: false
+    t.jsonb "checkpoint_data", default: {}
+    t.integer "retry_count", default: 0
     t.index ["job_type"], name: "index_jobs_on_job_type"
     t.index ["parent_job_id"], name: "index_jobs_on_parent_job_id"
+    t.index ["phase"], name: "index_jobs_on_phase"
     t.index ["repository_id"], name: "index_jobs_on_repository_id"
+    t.index ["resumable"], name: "index_jobs_on_resumable"
     t.index ["sidekiq_job_id"], name: "index_jobs_on_sidekiq_job_id"
     t.index ["status"], name: "index_jobs_on_status"
     t.index ["user_id"], name: "index_jobs_on_user_id"

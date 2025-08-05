@@ -29,6 +29,7 @@ Rails.application.routes.draw do
   resources :jobs, only: [:index, :show] do
     member do
       post :cancel
+      post :resume
       get :logs
     end
   end

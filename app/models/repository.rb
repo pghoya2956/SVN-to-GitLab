@@ -15,7 +15,7 @@ class Repository < ApplicationRecord
   # Migration method for repositories
   enum :migration_method, {
     simple: 0,        # Current method - just copies files
-    full_history: 1   # git-svn method - preserves full history
+    'git-svn': 1      # git-svn method - preserves full history
   }, default: :simple
   
   default_scope { where(user_id: User.current.id) if User.current }
@@ -75,16 +75,12 @@ class Repository < ApplicationRecord
   end
   
   # Helper methods for SVN structure
-  def trunk_path
-    svn_structure&.dig('trunk') || svn_structure&.dig(:trunk)
-  end
-  
-  def branches_path
-    svn_structure&.dig('branches') || svn_structure&.dig(:branches)
-  end
-  
-  def tags_path
-    svn_structure&.dig('tags') || svn_structure&.dig(:tags)
+  def parsed_svn_structure
+    return {} unless svn_structure.present?
+    return svn_structure if svn_structure.is_a?(Hash)
+    JSON.parse(svn_structure)
+  rescue JSON::ParserError
+    {}
   end
   
   # Set password (encrypt before saving)
@@ -96,34 +92,34 @@ class Repository < ApplicationRecord
   
   # SVN structure information access
   def trunk?
-    svn_structure&.dig('trunk').present?
+    parsed_svn_structure.dig('trunk').present?
   end
   
   def branches?
-    svn_structure&.dig('branches').present?
+    parsed_svn_structure.dig('branches').present?
   end
   
   def tags?
-    svn_structure&.dig('tags').present?
+    parsed_svn_structure.dig('tags').present?
   end
   
   # Check if repository uses standard layout
   def standard_layout?
-    trunk? && branches? && tags?
+    parsed_svn_structure['standard_layout'] == true
   end
   
   # Get SVN trunk path
   def trunk_path
-    svn_structure&.dig('trunk') || 'trunk'
+    parsed_svn_structure.dig('trunk') || 'trunk'
   end
   
   # Get SVN branches path
   def branches_path
-    svn_structure&.dig('branches') || 'branches'
+    parsed_svn_structure.dig('branches') || 'branches'
   end
   
   # Get SVN tags path
   def tags_path
-    svn_structure&.dig('tags') || 'tags'
+    parsed_svn_structure.dig('tags') || 'tags'
   end
 end
