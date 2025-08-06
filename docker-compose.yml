@@ -5,7 +5,7 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: svn_to_gitlab_${RAILS_ENV:-development}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./docker_volumes/postgres:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -16,10 +16,12 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server /usr/local/etc/redis/redis.conf
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - ./docker_volumes/redis:/data
+      - ./config/redis.conf:/usr/local/etc/redis/redis.conf:ro
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -30,10 +32,14 @@ services:
     build: .
     command: bash -c "rm -f tmp/pids/server.pid && bundle exec rails server -b 0.0.0.0"
     volumes:
+      # 개발 환경: 전체 소스 마운트 (hot reload)
       - .:/app
-      - bundle_cache:/usr/local/bundle
-      - node_modules:/app/node_modules
+      - ./docker_volumes/bundle:/usr/local/bundle
       - ./git_repos:/app/git_repos
+      # 임시 파일은 컨테이너 내부에서만 (호스트 오염 방지)
+      - /app/tmp
+      - /app/log
+      - /app/node_modules
     ports:
       - "3000:3000"
     environment:
@@ -53,9 +59,13 @@ services:
     build: .
     command: bundle exec sidekiq -C config/sidekiq.yml
     volumes:
+      # 개발 환경: 전체 소스 마운트
       - .:/app
-      - bundle_cache:/usr/local/bundle
+      - ./docker_volumes/bundle:/usr/local/bundle
       - ./git_repos:/app/git_repos
+      # 임시 파일은 컨테이너 내부에서만
+      - /app/tmp
+      - /app/log
     environment:
       RAILS_ENV: ${RAILS_ENV:-development}
       DATABASE_URL: postgresql://postgres:password@db:5432/svn_to_gitlab_${RAILS_ENV:-development}
@@ -67,14 +77,4 @@ services:
       redis:
         condition: service_healthy
 
-  mailcatcher:
-    image: schickling/mailcatcher
-    ports:
-      - "1080:1080"
-      - "1025:1025"
-
-volumes:
-  postgres_data:
-  redis_data:
-  bundle_cache:
-  node_modules:
+# Named volumes 섹션 제거 - 모두 bind mount로 변경됨

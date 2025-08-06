@@ -31,12 +31,13 @@ Rails 7.1 app with Sidekiq background jobs for SVN-to-GitLab migration.
 
 1. **Service Objects** (`app/services/repositories/`)
    - `GitlabConnector`: GitLab API wrapper
-   - `ValidatorService`: SVN repository validation
+   - `ValidatorService`: SVN repository validation  
    - `MigrationStrategyService`: Migration configuration
+   - `SvnStructureDetector`: SVN 구조 자동 감지 및 Authors 추출
 
 2. **Background Jobs** (`app/jobs/`)
-   - `MigrationJob`: Main migration process (SVN checkout → Git conversion → GitLab push)
-   - `IncrementalSyncJob`: Sync changes after initial migration (has bugs - see Known Issues)
+   - `MigrationJob`: Main migration process (git svn clone → GitLab push) - 전체 커밋 이력 보존
+   - `IncrementalSyncJob`: Sync changes after initial migration (git svn fetch/rebase)
 
 3. **Multi-tenancy**
    - `User.current` thread-local storage
@@ -46,23 +47,30 @@ Rails 7.1 app with Sidekiq background jobs for SVN-to-GitLab migration.
    - GitLab tokens: Base64 encoded (needs stronger encryption for production)
    - SVN credentials: Stored per repository
 
-## Known Issues
+## 아키텍처 개요
 
-1. **Incremental Sync Failure**: `local_git_path` not set by MigrationJob, causing chdir errors
-   - Fix: MigrationJob needs to update repository with `local_git_path` after completion
-   - IncrementalSyncJob needs nil checks before `Dir.chdir`
+- **프레임워크**: Ruby on Rails 7.1
+- **백그라운드 처리**: Sidekiq 7.2 
+- **데이터베이스**: PostgreSQL 15
+- **캐시**: Redis 7
+- **실시간 통신**: ActionCable (WebSocket)
+- **컨테이너화**: Docker & Docker Compose
+- **버전 관리 변환**: git-svn (전체 커밋 이력 보존)
 
-2. **Progress Display**: Shows 0% even when completed
-   - Job model has `progress` field but UI polling might be broken
+## 주요 디렉토리 구조
 
-3. **No Real SVN History**: Currently just copies files, doesn't use `git-svn`
+- `app/controllers/` - 웹 컨트롤러 및 API 엔드포인트
+- `app/jobs/` - Sidekiq 백그라운드 작업
+- `app/services/repositories/` - 비즈니스 로직 서비스
+- `app/channels/` - ActionCable 실시간 통신
+- `git_repos/` - 변환된 Git 저장소 영구 저장 (Docker 볼륨)
 
 ## Critical Paths
 
 1. **Migration Flow**:
    ```
-   RepositoriesController#migrate → MigrationJob#perform → 
-   SVN checkout → Git init → GitLab push
+   RepositoriesController#create → JobsController#create → MigrationJob#perform → 
+   git svn clone (with authors mapping) → GitLab push
    ```
 
 2. **GitLab Integration**:
@@ -112,16 +120,26 @@ Key relationships:
 2. **Medium**: https://svn.apache.org/repos/asf/commons/proper/collections/trunk (~200MB)
 3. **Large**: https://svn.apache.org/repos/asf/subversion/trunk (>2GB)
 
-## Git-SVN Implementation (In Progress)
+## Git-SVN Implementation
 
-현재 SVN checkout 방식만 구현되어 있으며, 전체 커밋 이력을 보존하는 git-svn 방식으로 전환 중
+git-svn을 사용하여 전체 커밋 이력을 보존하는 마이그레이션이 완전히 구현되었습니다
 
 ### 전환 전략
 - 사용자가 없으므로 기존 코드를 직접 수정 (호환성 불필요)
 - MigrationJob과 IncrementalSyncJob을 git-svn 방식으로 수정
 - 새로운 Job 클래스 생성 없이 기존 클래스 수정
 
-### 구현 현황
+### 현재 기능 상태
+
+모든 주요 기능이 구현 완료되었습니다:
+- ✅ git-svn을 사용한 전체 커밋 이력 보존
+- ✅ 재개 가능한 마이그레이션 (체크포인트 시스템)
+- ✅ SVN 구조 자동 감지 (표준/비표준 레이아웃)
+- ✅ Authors 매핑 UI 및 실시간 미리보기
+- ✅ ActionCable 실시간 진행률 모니터링
+- ✅ 증분 동기화 (git svn fetch/rebase)
+
+### 구현 완료 태스크
 - ✅ 완료: T-001 Docker 환경에 git-svn 설치
 - ✅ 완료: T-002 데이터베이스 스키마 확장 (migration_method, svn_structure 추가)
 - ✅ 완료: T-003 MigrationJob을 git-svn 방식으로 수정

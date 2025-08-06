@@ -1,9 +1,10 @@
 class JobsController < ApplicationController
-  before_action :set_job, only: [:show, :cancel, :resume, :logs]
+  before_action :set_job, only: [:show, :cancel, :resume, :logs, :destroy]
   before_action :set_repository, only: [:new, :create]
   
   def index
-    @jobs = current_user.jobs.includes(:repository).recent
+    repository_ids = Repository.for_token(current_token_hash).pluck(:id)
+    @jobs = Job.where(repository_id: repository_ids).includes(:repository).recent
   end
   
   def show
@@ -14,7 +15,7 @@ class JobsController < ApplicationController
   end
   
   def new
-    @job = @repository.jobs.build(user: current_user)
+    @job = @repository.jobs.build
     
     # Check prerequisites
     unless @repository.gitlab_project_id.present?
@@ -37,13 +38,13 @@ class JobsController < ApplicationController
     end
     
     @job = @repository.jobs.build(job_params)
-    @job.user = current_user
+    @job.owner_token_hash = current_token_hash
     @job.job_type = 'migration'
     @job.parameters = build_job_parameters.to_json
     
     if @job.save
-      # Queue Sidekiq job
-      job_id = MigrationJob.perform_async(@job.id)
+      # Queue Sidekiq job with token
+      job_id = MigrationJob.perform_async(@job.id, session[:gitlab_token], session[:gitlab_endpoint])
       @job.update(sidekiq_job_id: job_id)
       
       redirect_to @job, notice: "Migration job started successfully"
@@ -66,13 +67,23 @@ class JobsController < ApplicationController
       # 재시도 카운트 증가
       @job.increment!(:retry_count)
       
-      # 새로운 Sidekiq job 시작
-      job_id = MigrationJob.perform_async(@job.id)
-      @job.update(sidekiq_job_id: job_id)
+      # 새로운 Sidekiq job 시작 (토큰 정보 포함)
+      job_id = MigrationJob.perform_async(@job.id, session[:gitlab_token], session[:gitlab_endpoint])
+      @job.update(sidekiq_job_id: job_id, status: 'pending')
       
       redirect_to @job, notice: "마이그레이션이 마지막 체크포인트에서 재개되었습니다."
     else
       redirect_to @job, alert: "이 작업은 재개할 수 없습니다."
+    end
+  end
+  
+  def destroy
+    if @job.can_delete?
+      @repository = @job.repository
+      @job.destroy
+      redirect_to @repository, notice: "Job이 성공적으로 삭제되었습니다."
+    else
+      redirect_to @job, alert: "진행 중인 Job은 삭제할 수 없습니다. 먼저 취소해주세요."
     end
   end
   
@@ -98,11 +109,16 @@ class JobsController < ApplicationController
   private
   
   def set_job
-    @job = current_user.jobs.find(params[:id])
+    repository_ids = Repository.for_token(current_token_hash).pluck(:id)
+    @job = Job.where(repository_id: repository_ids).find(params[:id])
+  rescue ActiveRecord::RecordNotFound
+    redirect_to jobs_path, alert: "Job not found or access denied"
   end
   
   def set_repository
-    @repository = current_user.repositories.find(params[:repository_id])
+    @repository = Repository.for_token(current_token_hash).find(params[:repository_id])
+  rescue ActiveRecord::RecordNotFound
+    redirect_to repositories_path, alert: "Repository not found or access denied"
   end
   
   def job_params
@@ -116,7 +132,7 @@ class JobsController < ApplicationController
       preserve_history: @repository.preserve_history,
       branch_strategy: @repository.branch_strategy,
       tag_strategy: @repository.tag_strategy,
-      started_by: current_user.email
+      started_by: current_gitlab_user&.dig(:email) || 'GitLab User'
     }
   end
   

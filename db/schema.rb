@@ -10,21 +10,11 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_08_05_100644) do
+ActiveRecord::Schema[7.1].define(version: 2025_08_06_042703) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
-  create_table "gitlab_tokens", force: :cascade do |t|
-    t.bigint "user_id", null: false
-    t.string "endpoint"
-    t.string "encrypted_token"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["user_id"], name: "index_gitlab_tokens_on_user_id"
-  end
-
   create_table "jobs", force: :cascade do |t|
-    t.bigint "user_id", null: false
     t.bigint "repository_id", null: false
     t.string "status", default: "pending"
     t.string "job_type"
@@ -55,14 +45,16 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_05_100644) do
     t.boolean "resumable", default: false
     t.jsonb "checkpoint_data", default: {}
     t.integer "retry_count", default: 0
+    t.string "owner_token_hash"
+    t.datetime "estimated_completion_at"
     t.index ["job_type"], name: "index_jobs_on_job_type"
+    t.index ["owner_token_hash"], name: "index_jobs_on_owner_token_hash"
     t.index ["parent_job_id"], name: "index_jobs_on_parent_job_id"
     t.index ["phase"], name: "index_jobs_on_phase"
     t.index ["repository_id"], name: "index_jobs_on_repository_id"
     t.index ["resumable"], name: "index_jobs_on_resumable"
     t.index ["sidekiq_job_id"], name: "index_jobs_on_sidekiq_job_id"
     t.index ["status"], name: "index_jobs_on_status"
-    t.index ["user_id"], name: "index_jobs_on_user_id"
   end
 
   create_table "repositories", force: :cascade do |t|
@@ -73,7 +65,6 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_05_100644) do
     t.string "encrypted_password"
     t.text "ssh_key"
     t.string "branch_option"
-    t.bigint "user_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "gitlab_project_id"
@@ -96,29 +87,16 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_05_100644) do
     t.integer "migration_method", default: 0, null: false
     t.jsonb "svn_structure"
     t.string "authors_file_path"
+    t.string "owner_token_hash"
+    t.string "gitlab_endpoint", default: "https://gitlab.com/api/v4"
     t.index ["enable_incremental_sync"], name: "index_repositories_on_enable_incremental_sync"
     t.index ["gitlab_project_id"], name: "index_repositories_on_gitlab_project_id"
     t.index ["last_synced_at"], name: "index_repositories_on_last_synced_at"
     t.index ["migration_method"], name: "index_repositories_on_migration_method"
     t.index ["migration_type"], name: "index_repositories_on_migration_type"
+    t.index ["owner_token_hash"], name: "index_repositories_on_owner_token_hash"
     t.index ["source_type"], name: "index_repositories_on_source_type"
-    t.index ["user_id"], name: "index_repositories_on_user_id"
   end
 
-  create_table "users", force: :cascade do |t|
-    t.string "email", default: "", null: false
-    t.string "encrypted_password", default: "", null: false
-    t.string "reset_password_token"
-    t.datetime "reset_password_sent_at"
-    t.datetime "remember_created_at"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["email"], name: "index_users_on_email", unique: true
-    t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
-  end
-
-  add_foreign_key "gitlab_tokens", "users"
   add_foreign_key "jobs", "repositories"
-  add_foreign_key "jobs", "users"
-  add_foreign_key "repositories", "users"
 end

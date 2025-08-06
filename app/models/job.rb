@@ -1,5 +1,4 @@
 class Job < ApplicationRecord
-  belongs_to :user
   belongs_to :repository
   
   # 상태 관리
@@ -17,7 +16,7 @@ class Job < ApplicationRecord
   
   validates :phase, inclusion: { in: PHASES.keys.map(&:to_s) }, allow_nil: true
   
-  default_scope { where(user_id: User.current.id) if User.current }
+  # User 관련 코드 제거
   
   scope :recent, -> { order(created_at: :desc) }
   scope :active, -> { where(status: %w[pending running]) }
@@ -102,9 +101,14 @@ class Job < ApplicationRecord
     end
   end
   
+  def current_commit_message
+    # 현재 처리 중인 커밋 메시지 (나중에 구현 가능)
+    nil
+  end
+  
   def progress_percentage
     # First, use the progress field if it's set
-    return progress if progress.present?
+    return progress.to_i if progress.present?
     
     # Otherwise, calculate from commits if possible
     return 0 if total_commits.to_i == 0
@@ -186,10 +190,12 @@ class Job < ApplicationRecord
   # 재개 가능 여부 확인
   def can_resume?
     resumable? && 
-    (failed? || cancelled?) && 
-    retry_count < 3 &&
-    repository.local_git_path.present? &&
-    File.exist?(repository.local_git_path)
+    (failed? || cancelled?)
+    # 재시도 횟수 제한 제거
+  end
+  
+  def can_delete?
+    !active?  # 활성 상태가 아닌 경우만 삭제 가능
   end
   
   # 체크포인트 저장

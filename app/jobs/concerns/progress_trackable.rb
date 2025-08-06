@@ -19,6 +19,9 @@ module ProgressTrackable
         # 체크포인트 저장 (5분마다)
         save_checkpoint_if_needed
         
+        # 실제 진행 상황 체크 (10회 연속 같은 리비전이면 멈춤으로 간주)
+        check_actual_progress(progress_data[:current_revision])
+        
         sleep 5
       end
     rescue => e
@@ -59,27 +62,53 @@ module ProgressTrackable
   def broadcast_progress(data)
     JobProgressChannel.broadcast_to(@job, data)
     
+    # eta_seconds 처리 - 이미 숫자인 경우 그대로 사용
+    eta_value = data[:eta]
+    eta_seconds_value = case eta_value
+    when nil, "계산 중..."
+      nil
+    when Integer, Float
+      eta_value.to_i
+    when String
+      parse_duration_to_seconds(eta_value)
+    else
+      nil
+    end
+    
     # Job 모델 업데이트
     @job.update!(
       progress: data[:progress_percentage].to_i,
       current_revision: data[:current_revision],
       total_revisions: data[:total_revisions],
       processing_speed: data[:processing_speed],
-      eta_seconds: data[:eta] == "계산 중..." ? nil : parse_duration_to_seconds(data[:eta])
+      eta_seconds: eta_seconds_value
     )
   end
   
   def get_current_revision
     return 0 unless @repository.local_git_path && File.directory?(@repository.local_git_path)
     
-    Dir.chdir(@repository.local_git_path) do
-      # 최신 커밋의 SVN 리비전 번호 추출
+    # 이미 올바른 디렉토리에 있는지 확인
+    if Dir.pwd == File.expand_path(@repository.local_git_path)
+      # 이미 올바른 디렉토리에 있으므로 chdir 불필요
       output = `git log -1 --grep='^git-svn-id:' --pretty=format:'%b' 2>/dev/null`
       if match = output.match(/git-svn-id:.*@(\d+)/)
-        match[1].to_i
+        return match[1].to_i
       else
         # git-svn-id가 없으면 커밋 수로 대체
-        `git rev-list --count HEAD 2>/dev/null`.to_i
+        return `git rev-list --count HEAD 2>/dev/null`.to_i
+      end
+    else
+      # 다른 디렉토리에 있으므로 chdir 필요
+      Dir.chdir(@repository.local_git_path) do
+        # 최신 커밋의 SVN 리비전 번호 추출
+        output = `git log -1 --grep='^git-svn-id:' --pretty=format:'%b' 2>/dev/null`
+        if match = output.match(/git-svn-id:.*@(\d+)/)
+          match[1].to_i
+        else
+          # git-svn-id가 없으면 커밋 수로 대체
+          `git rev-list --count HEAD 2>/dev/null`.to_i
+        end
       end
     end
   rescue => e
@@ -90,8 +119,15 @@ module ProgressTrackable
   def get_current_commit_message
     return nil unless @repository.local_git_path && File.directory?(@repository.local_git_path)
     
-    Dir.chdir(@repository.local_git_path) do
+    # 이미 올바른 디렉토리에 있는지 확인
+    if Dir.pwd == File.expand_path(@repository.local_git_path)
+      # 이미 올바른 디렉토리에 있으므로 chdir 불필요
       `git log -1 --pretty=format:'%s' 2>/dev/null`.strip
+    else
+      # 다른 디렉토리에 있으므로 chdir 필요
+      Dir.chdir(@repository.local_git_path) do
+        `git log -1 --pretty=format:'%s' 2>/dev/null`.strip
+      end
     end
   rescue => e
     Rails.logger.error "Error getting commit message: #{e.message}"
@@ -115,19 +151,23 @@ module ProgressTrackable
   end
   
   def parse_duration_to_seconds(duration_str)
-    return nil if duration_str == "계산 중..."
+    return nil if duration_str.nil? || duration_str == "계산 중..."
     
     total_seconds = 0
     
-    if match = duration_str.match(/(\d+)시간/)
+    # duration_str이 숫자인 경우 그대로 반환
+    return duration_str.to_i if duration_str.is_a?(Numeric) || duration_str.to_s =~ /^\d+$/
+    
+    # 문자열 형식 파싱
+    if match = duration_str.to_s.match(/(\d+)시간/)
       total_seconds += match[1].to_i * 3600
     end
     
-    if match = duration_str.match(/(\d+)분/)
+    if match = duration_str.to_s.match(/(\d+)분/)
       total_seconds += match[1].to_i * 60
     end
     
-    if match = duration_str.match(/(\d+)초/)
+    if match = duration_str.to_s.match(/(\d+)초/)
       total_seconds += match[1].to_i
     end
     
@@ -151,5 +191,43 @@ module ProgressTrackable
       @last_checkpoint_time = Time.current
       Rails.logger.info "Checkpoint saved for job #{@job.id}"
     end
+  end
+  
+  def check_actual_progress(current_revision)
+    @last_revision_check ||= current_revision
+    @same_revision_count ||= 0
+    
+    if @last_revision_check == current_revision
+      @same_revision_count += 1
+      
+      # 10회 연속(50초) 같은 리비전이면 실제로 멈춘 것으로 간주
+      if @same_revision_count >= 10
+        Rails.logger.warn "Job #{@job.id} appears to be stuck at revision #{current_revision}"
+        
+        # git svn 프로세스가 실제로 실행 중인지 확인
+        git_svn_running = check_git_svn_process_running
+        
+        unless git_svn_running
+          Rails.logger.error "Job #{@job.id} git-svn process not found, marking as failed"
+          @job.update!(
+            status: 'failed',
+            phase: 'cloning',
+            error_log: @job.error_log.to_s + "\n[#{Time.current}] Process appears to be stuck at revision #{current_revision}, no git-svn process found"
+          )
+        end
+      end
+    else
+      @last_revision_check = current_revision
+      @same_revision_count = 0
+    end
+  end
+  
+  def check_git_svn_process_running
+    # Docker 컨테이너 내에서 git svn 프로세스 확인
+    ps_output = `ps aux | grep 'git svn' | grep -v grep`
+    !ps_output.empty?
+  rescue => e
+    Rails.logger.error "Error checking git svn process: #{e.message}"
+    false
   end
 end

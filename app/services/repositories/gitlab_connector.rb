@@ -2,8 +2,17 @@ module Repositories
   class GitlabConnector
     attr_reader :client, :errors
 
-    def initialize(gitlab_token)
-      @gitlab_token = gitlab_token
+    def initialize(token, endpoint = 'https://gitlab.com/api/v4')
+      if token.is_a?(String)
+        # New way: direct token and endpoint
+        @token = token
+        @endpoint = endpoint
+      else
+        # Legacy: gitlab_token object (for compatibility)
+        @gitlab_token = token
+        @token = @gitlab_token.decrypt_token if @gitlab_token
+        @endpoint = @gitlab_token&.endpoint if @gitlab_token
+      end
       @errors = []
       initialize_client
     end
@@ -87,11 +96,13 @@ module Repositories
             id: user.id,
             username: user.username,
             name: user.name,
-            email: user.email
+            email: user.email,
+            avatar_url: user.avatar_url,
+            web_url: user.web_url
           }
         }
       rescue Gitlab::Error => e
-        error_response("Failed to validate connection: #{e.message}")
+        error_response("Invalid GitLab token: #{e.message}")
       end
     end
 
@@ -99,8 +110,8 @@ module Repositories
       return error_response("GitLab client not initialized") unless @client
 
       begin
-        projects = @client.project_search(
-          query,
+        projects = @client.projects(
+          search: query,
           order_by: 'last_activity_at',
           sort: 'desc',
           page: page,
@@ -113,15 +124,29 @@ module Repositories
       end
     end
 
+    def create_project(name, options = {})
+      return error_response("GitLab client not initialized") unless @client
+
+      begin
+        project = @client.create_project(name, options)
+        {
+          success: true,
+          project: format_project(project)
+        }
+      rescue Gitlab::Error => e
+        error_response("Failed to create project: #{e.message}")
+      end
+    end
+
     private
 
     def initialize_client
-      return unless @gitlab_token
-
+      return unless @token
+      
       begin
         @client = Gitlab.client(
-          endpoint: @gitlab_token.endpoint,
-          private_token: @gitlab_token.decrypt_token
+          endpoint: @endpoint || 'https://gitlab.com/api/v4',
+          private_token: @token
         )
       rescue => e
         @errors << "Failed to initialize GitLab client: #{e.message}"
@@ -136,12 +161,12 @@ module Repositories
           success: true,
           projects: format_projects(projects),
           total_count: projects.total_count,
-          page: projects.current_page,
-          per_page: projects.per_page
+          page: page,
+          per_page: per_page
         }
       else
-        # For plain arrays, we estimate pagination
-        projects_array = projects.is_a?(Array) ? projects : projects.to_a
+        # For arrays (e.g., filtered results)
+        projects_array = projects.to_a
         {
           success: true,
           projects: format_projects(projects_array),

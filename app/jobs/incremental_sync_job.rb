@@ -17,11 +17,10 @@ class IncrementalSyncJob
     end
   end
   
-  def perform(repository_id)
+  def perform(repository_id, gitlab_token = nil, gitlab_endpoint = nil)
     @repository = Repository.find(repository_id)
-    @user = @repository.user
-    
-    User.current = @user
+    @gitlab_token = gitlab_token
+    @gitlab_endpoint = gitlab_endpoint || 'https://gitlab.com/api/v4'
     
     # 동시 실행 방지
     if @repository.has_active_sync_job?
@@ -30,7 +29,7 @@ class IncrementalSyncJob
     end
     
     @job = @repository.jobs.create!(
-      user: @user,
+      owner_token_hash: Digest::SHA256.hexdigest(gitlab_token),
       job_type: 'incremental_sync',
       status: 'pending',
       parent_job_id: @repository.last_migration_job&.id,
@@ -55,8 +54,6 @@ class IncrementalSyncJob
       Rails.logger.error e.backtrace.join("\n")
       @job.mark_as_failed!(e.message) if @job
       raise e
-    ensure
-      User.current = nil
     end
   end
   
@@ -240,7 +237,7 @@ class IncrementalSyncJob
     @job.append_output("Pushing to GitLab...")
     @job.update(progress: 80)
     
-    connector = Repositories::GitlabConnector.new(@user.gitlab_token)
+    connector = Repositories::GitlabConnector.new(@gitlab_token, @gitlab_endpoint)
     project = connector.fetch_project(@repository.gitlab_project_id)
     
     unless project[:success]
@@ -248,7 +245,7 @@ class IncrementalSyncJob
     end
     
     gitlab_url = project[:project][:http_url_to_repo]
-    push_url = gitlab_url.sub('https://', "https://oauth2:#{@user.gitlab_token.decrypt_token}@")
+    push_url = gitlab_url.sub('https://', "https://oauth2:#{@gitlab_token}@")
     
     # 현재 브랜치 푸시
     Open3.popen3('git', 'push', push_url, @current_branch) do |stdin, stdout, stderr, wait_thr|

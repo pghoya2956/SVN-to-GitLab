@@ -1,4 +1,12 @@
 Rails.application.routes.draw do
+  # 로그인이 root
+  root 'sessions#new'
+  
+  # 세션 관리
+  get 'login', to: 'sessions#new', as: :login
+  post 'login', to: 'sessions#create'
+  delete 'logout', to: 'sessions#destroy', as: :logout
+  
   mount ActionCable.server => '/cable'
   
   # API routes
@@ -26,7 +34,7 @@ Rails.application.routes.draw do
     resources :jobs, only: [:new, :create]
   end
   
-  resources :jobs, only: [:index, :show] do
+  resources :jobs, only: [:index, :show, :destroy] do
     member do
       post :cancel
       post :resume
@@ -41,7 +49,7 @@ Rails.application.routes.draw do
     end
   end
   
-  resource :gitlab_token, only: [:new, :create, :edit, :update, :destroy]
+  # GitlabToken 라우트 제거 (더 이상 필요 없음)
   
   # devise_for :users (로그인 기능 비활성화)
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
@@ -50,6 +58,5 @@ Rails.application.routes.draw do
   # Can be used by load balancers and uptime monitors to verify that the app is live.
   get "up" => "rails/health#show", as: :rails_health_check
 
-  # Defines the root path route ("/")
-  root "repositories#index"
+  # root 중복 제거 (위에서 이미 정의)
 end

@@ -13,6 +13,7 @@
 !/log/.keep
 !/tmp/.keep
 tasks/
+docs/
 
 # Ignore pidfiles, but keep the directory.
 /tmp/pids/*
@@ -46,11 +47,11 @@ yarn-debug.log*
 .env
 .env.*
 
-# Ignore Docker volumes
-postgres_data/
-redis_data/
-bundle_cache/
-git_repos/
+# Ignore Docker volumes (but keep structure)
+docker_volumes/*
+!docker_volumes/.keep
+git_repos/*
+!git_repos/.keep
 
 # Ignore OS files
 .DS_Store
@@ -71,3 +72,19 @@ Thumbs.db
 
 # Ignore credentials
 /config/credentials/*.key
+
+# Ignore test scripts
+test_*.rb
+test_*.sh
+fix_*.rb
+resume_*.rb
+monitor_*.rb
+
+# Ignore backup files
+*.backup
+*.bak
+backup_*.sql
+
+# Ignore temporary scripts
+start_migration.rb
+scripts/save_gitlab_token.rb

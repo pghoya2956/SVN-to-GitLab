@@ -1,5 +1,4 @@
 class Repository < ApplicationRecord
-  belongs_to :user
   has_many :jobs, dependent: :destroy
   
   validates :name, presence: true
@@ -18,7 +17,8 @@ class Repository < ApplicationRecord
     'git-svn': 1      # git-svn method - preserves full history
   }, default: :simple
   
-  default_scope { where(user_id: User.current.id) if User.current }
+  # PAT 기반 스코프
+  scope :for_token, ->(token_hash) { where(owner_token_hash: token_hash) }
   
   scope :incremental_sync_enabled, -> { where(enable_incremental_sync: true) }
   scope :needs_sync, -> { incremental_sync_enabled.where('last_synced_at IS NULL OR last_synced_at < ?', 1.hour.ago) }

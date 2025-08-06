@@ -3,7 +3,7 @@ class RepositoriesController < ApplicationController
 
   # GET /repositories or /repositories.json
   def index
-    @repositories = current_user.repositories
+    @repositories = Repository.for_token(current_token_hash)
   end
 
   # GET /repositories/1 or /repositories/1.json
@@ -12,7 +12,7 @@ class RepositoriesController < ApplicationController
 
   # GET /repositories/new
   def new
-    @repository = current_user.repositories.build
+    @repository = Repository.new
   end
 
   # GET /repositories/1/edit
@@ -21,7 +21,9 @@ class RepositoriesController < ApplicationController
 
   # POST /repositories or /repositories.json
   def create
-    @repository = current_user.repositories.build(repository_params)
+    @repository = Repository.new(repository_params)
+    @repository.owner_token_hash = current_token_hash
+    @repository.gitlab_endpoint = session[:gitlab_endpoint]
 
     respond_to do |format|
       if @repository.save
@@ -204,7 +206,9 @@ class RepositoriesController < ApplicationController
   private
     # Use callbacks to share common setup or constraints between actions.
     def set_repository
-      @repository = current_user.repositories.find(params[:id])
+      @repository = Repository.for_token(current_token_hash).find(params[:id])
+    rescue ActiveRecord::RecordNotFound
+      redirect_to repositories_path, alert: "Repository not found or access denied"
     end
 
     # Only allow a list of trusted parameters through.

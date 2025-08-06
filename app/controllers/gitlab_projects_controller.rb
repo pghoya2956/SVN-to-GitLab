@@ -1,9 +1,8 @@
 class GitlabProjectsController < ApplicationController
-  before_action :ensure_gitlab_token
   before_action :load_repository
 
   def index
-    @connector = Repositories::GitlabConnector.new(current_user.gitlab_token)
+    @connector = Repositories::GitlabConnector.new(session[:gitlab_token], session[:gitlab_endpoint])
     
     # Validate connection first
     validation = @connector.validate_connection
@@ -24,7 +23,7 @@ class GitlabProjectsController < ApplicationController
   end
 
   def search
-    @connector = Repositories::GitlabConnector.new(current_user.gitlab_token)
+    @connector = Repositories::GitlabConnector.new(session[:gitlab_token], session[:gitlab_endpoint])
     
     if params[:query].present?
       @search_results = @connector.search_projects(params[:query], page: params[:page] || 1)
@@ -38,7 +37,7 @@ class GitlabProjectsController < ApplicationController
   end
 
   def select
-    @connector = Repositories::GitlabConnector.new(current_user.gitlab_token)
+    @connector = Repositories::GitlabConnector.new(session[:gitlab_token], session[:gitlab_endpoint])
     project_result = @connector.fetch_project(params[:project_id])
     
     if project_result[:success]
@@ -57,15 +56,8 @@ class GitlabProjectsController < ApplicationController
 
   private
 
-  def ensure_gitlab_token
-    unless current_user.gitlab_token
-      redirect_to new_gitlab_token_path(repository_id: params[:repository_id]), 
-                  alert: "Please configure GitLab access token first"
-    end
-  end
-
   def load_repository
-    @repository = current_user.repositories.find(params[:repository_id])
+    @repository = Repository.for_token(current_token_hash).find(params[:repository_id])
   rescue ActiveRecord::RecordNotFound
     redirect_to repositories_path, alert: "Repository not found"
   end

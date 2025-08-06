@@ -16,17 +16,9 @@ module ApplicationHelper
     end
   end
   
-  # Devise helper methods override
+  # Authentication helper methods
   def user_signed_in?
-    true
-  end
-  
-  def current_user
-    @current_user ||= User.first_or_create!(
-      email: 'default@example.com',
-      password: 'defaultpassword',
-      password_confirmation: 'defaultpassword'
-    )
+    gitlab_authenticated?
   end
   
   # Job phase progress helpers

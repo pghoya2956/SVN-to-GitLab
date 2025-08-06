@@ -1,0 +1,62 @@
+# Production Docker Compose
+# 사용법: docker compose -f docker-compose.prod.yml up
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: svn_to_gitlab_production
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  web:
+    build: .  # 프로덕션 Dockerfile 사용
+    command: bundle exec puma -C config/puma.rb
+    volumes:
+      # 프로덕션에서는 데이터만 마운트, 소스코드는 이미지에 포함
+      - git_repos:/app/git_repos
+      - storage:/app/storage
+    ports:
+      - "3000:3000"
+    environment:
+      RAILS_ENV: production
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/svn_to_gitlab_production
+      REDIS_URL: redis://redis:6379/0
+      RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  sidekiq:
+    build: .  # 프로덕션 Dockerfile 사용
+    command: bundle exec sidekiq -C config/sidekiq.yml
+    volumes:
+      - git_repos:/app/git_repos
+      - storage:/app/storage
+    environment:
+      RAILS_ENV: production
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/svn_to_gitlab_production
+      REDIS_URL: redis://redis:6379/0
+      RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+# Named volumes for production
+volumes:
+  postgres_data:
+  redis_data:
+  git_repos:
+  storage:

@@ -69,18 +69,38 @@
             <td><%= job.started_at&.strftime('%Y-%m-%d %H:%M') || '-' %></td>
             <td><%= job.formatted_duration %></td>
             <td>
-              <div class="d-flex align-items-center">
-                <div class="progress" style="width: 100px; height: 20px;">
-                  <div class="progress-bar" style="width: <%= job.progress_percentage %>%">
-                    <%= job.progress_percentage %>%
+              <% if job.active? %>
+                <div class="d-flex align-items-center">
+                  <div class="progress" style="width: 100px; height: 20px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar"
+                         style="width: <%= job.progress_percentage %>%"
+                         aria-valuenow="<%= job.progress_percentage %>"
+                         aria-valuemin="0"
+                         aria-valuemax="100">
+                      <%= job.progress_percentage %>%
+                    </div>
+                  </div>
+                  <% if job.current_revision && job.total_revisions && job.total_revisions > 0 %>
+                    <small class="text-muted ms-2">
+                      r<%= job.current_revision %> / <%= job.total_revisions %>
+                    </small>
+                  <% end %>
+                </div>
+              <% else %>
+                <div class="d-flex align-items-center">
+                  <div class="progress" style="width: 100px; height: 20px;">
+                    <div class="progress-bar <%= job.completed? ? 'bg-success' : 'bg-danger' %>" 
+                         role="progressbar"
+                         style="width: <%= job.progress_percentage %>%"
+                         aria-valuenow="<%= job.progress_percentage %>"
+                         aria-valuemin="0"
+                         aria-valuemax="100">
+                      <small><%= job.progress_percentage %>%</small>
+                    </div>
                   </div>
                 </div>
-                <% if job.processed_commits && job.total_commits && job.total_commits > 0 %>
-                  <small class="text-muted ms-2">
-                    <%= job.processed_commits %> / <%= job.total_commits %>
-                  </small>
-                <% end %>
-              </div>
+              <% end %>
             </td>
             <td>
               <%= link_to job_path(job), class: "btn btn-sm btn-outline-primary" do %>
