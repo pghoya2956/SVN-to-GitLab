@@ -27,6 +27,11 @@ module Repositories
     def detect_structure
       append_output("Detecting repository structure...")
       
+      # First, get root directory listing
+      cmd = build_svn_command(['svn', 'ls', @repository.svn_url])
+      stdout, _, status = Open3.capture3(*cmd)
+      root_entries = status.success? ? stdout.lines.map(&:strip).reject(&:empty?) : []
+      
       # Check standard paths
       trunk_info = check_path('trunk')
       branches_info = check_path('branches')
@@ -34,16 +39,43 @@ module Repositories
       
       layout = determine_layout(trunk_info, branches_info, tags_info)
       
+      # Build directory tree structure (2 levels deep) - 간단한 방식으로 수집
+      tree_structure = build_simple_tree(@repository.svn_url, root_entries)
+      
       structure = {
         trunk: trunk_info[:exists] ? 'trunk' : nil,
         branches: branches_info[:exists] ? 'branches' : nil,
         tags: tags_info[:exists] ? 'tags' : nil,
-        layout: layout
+        layout: layout,
+        detected_trunk: trunk_info[:exists] ? 'trunk' : nil,
+        detected_branches: branches_info[:exists] ? 'branches' : nil,
+        detected_tags: tags_info[:exists] ? 'tags' : nil,
+        root_entries: root_entries,  # Always include root entries
+        tree_structure: tree_structure  # Include tree structure for visualization
       }
+      
+      # Add missing directories info for partial_standard
+      if layout == 'partial_standard'
+        missing = []
+        missing << 'trunk' unless trunk_info[:exists]
+        missing << 'branches' unless branches_info[:exists]
+        missing << 'tags' unless tags_info[:exists]
+        structure[:missing_directories] = missing
+        
+        # Try to detect alternative names in root
+        possible_trunk = root_entries.find { |e| e =~ /^(main|master|head|develop|src|code)/i }
+        possible_branches = root_entries.find { |e| e =~ /^(branch|feature|release|dev)/i }
+        possible_tags = root_entries.find { |e| e =~ /^(tag|release|version)/i }
+        
+        structure[:alternative_trunk] = possible_trunk if possible_trunk
+        structure[:alternative_branches] = possible_branches if possible_branches
+        structure[:alternative_tags] = possible_tags if possible_tags
+      end
       
       # If non-standard, try to detect actual structure
       if layout == 'non_standard'
-        structure.merge!(detect_non_standard_structure)
+        non_standard_info = detect_non_standard_structure
+        structure.merge!(non_standard_info)
       end
       
       append_output("Detected layout: #{layout}")
@@ -72,6 +104,91 @@ module Repositories
       end
     end
     
+    def build_simple_tree(url, root_entries)
+      tree = {}
+      
+      # 루트 엔트리 처리
+      root_entries.each do |entry|
+        next unless entry.end_with?('/')  # 디렉토리만 처리
+        
+        dir_name = entry.chomp('/')
+        tree[dir_name] = []
+        
+        # 각 디렉토리의 하위 항목 가져오기 (1 레벨만)
+        begin
+          cmd = build_svn_command(['svn', 'ls', "#{url}/#{dir_name}"])
+          stdout, _, status = Open3.capture3(*cmd)
+          
+          if status.success?
+            stdout.lines.each do |line|
+              sub_entry = line.strip
+              next if sub_entry.empty?
+              tree[dir_name] << sub_entry.chomp('/')
+            end
+          end
+        rescue => e
+          append_output("Error getting subdirectories for #{dir_name}: #{e.message}")
+        end
+      end
+      
+      tree
+    end
+    
+    def build_directory_tree(url, current_depth: 0, max_depth: 2, path: '', max_entries: 50)
+      return [] if current_depth >= max_depth
+      
+      full_url = path.empty? ? url : "#{url}/#{path}"
+      append_output("Building tree for: #{full_url} (depth: #{current_depth})")
+      
+      cmd = build_svn_command(['svn', 'ls', full_url])
+      stdout, _, status = Open3.capture3(*cmd)
+      
+      return [] unless status.success?
+      
+      entries = []
+      entry_count = 0
+      
+      stdout.lines.each do |line|
+        entry_name = line.strip
+        next if entry_name.empty?
+        
+        # Limit entries per directory to avoid performance issues
+        break if entry_count >= max_entries
+        
+        is_dir = entry_name.end_with?('/')
+        clean_name = entry_name.chomp('/')
+        full_path = path.empty? ? clean_name : "#{path}/#{clean_name}"
+        
+        # Skip hidden directories and files
+        next if clean_name.start_with?('.')
+        
+        entry = {
+          name: clean_name,
+          path: full_path,
+          type: is_dir ? 'directory' : 'file'
+        }
+        
+        # Recursively get subdirectories (but not files)
+        if is_dir && current_depth < max_depth - 1
+          children = build_directory_tree(url, 
+                                        current_depth: current_depth + 1, 
+                                        max_depth: max_depth, 
+                                        path: full_path,
+                                        max_entries: 30)  # Fewer entries for subdirectories
+          entry[:children] = children if children.any?
+        end
+        
+        entries << entry
+        entry_count += 1
+      end
+      
+      append_output("Found #{entries.size} entries at depth #{current_depth}")
+      entries
+    rescue => e
+      append_output("Error building tree for #{path}: #{e.message}")
+      []
+    end
+    
     def detect_non_standard_structure
       append_output("Checking for non-standard structure...")
       
@@ -91,15 +208,16 @@ module Repositories
         detected_trunk: possible_trunk,
         detected_branches: possible_branches,
         detected_tags: possible_tags,
-        root_entries: entries
+        root_entries: entries,
+        requires_user_input: true  # 비표준 레이아웃은 사용자 입력 필요
       }
     end
     
     def extract_authors
-      append_output("Extracting author information...")
+      append_output("Extracting author information from entire repository history...")
       
-      # Limit log entries for performance
-      cmd = build_svn_command(['svn', 'log', '--quiet', '--limit', '1000', @repository.svn_url])
+      # Get ALL authors from entire history (no limit)
+      cmd = build_svn_command(['svn', 'log', '--quiet', @repository.svn_url])
       stdout, _, status = Open3.capture3(*cmd)
       
       return [] unless status.success?
@@ -112,7 +230,7 @@ module Repositories
         .uniq
         .sort
       
-      append_output("Found #{authors.size} unique authors")
+      append_output("Found #{authors.size} unique authors from complete history")
       
       # Create author mappings
       authors.map do |author|

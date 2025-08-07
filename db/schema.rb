@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_08_06_042703) do
+ActiveRecord::Schema[7.1].define(version: 2025_08_07_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -74,11 +74,7 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_06_042703) do
     t.boolean "preserve_history", default: true
     t.jsonb "authors_mapping"
     t.text "ignore_patterns"
-    t.string "tag_strategy", default: "all"
-    t.string "branch_strategy", default: "all"
     t.string "commit_message_prefix"
-    t.string "large_file_handling", default: "git-lfs"
-    t.integer "max_file_size_mb", default: 100
     t.string "local_git_path"
     t.datetime "last_synced_at"
     t.integer "last_synced_revision"
@@ -89,13 +85,22 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_06_042703) do
     t.string "authors_file_path"
     t.string "owner_token_hash"
     t.string "gitlab_endpoint", default: "https://gitlab.com/api/v4"
+    t.string "layout_type", default: "standard"
+    t.string "custom_trunk_path"
+    t.string "custom_branches_path"
+    t.string "custom_tags_path"
+    t.boolean "generate_gitignore", default: false
+    t.integer "total_revisions"
+    t.integer "latest_revision"
     t.index ["enable_incremental_sync"], name: "index_repositories_on_enable_incremental_sync"
     t.index ["gitlab_project_id"], name: "index_repositories_on_gitlab_project_id"
     t.index ["last_synced_at"], name: "index_repositories_on_last_synced_at"
+    t.index ["layout_type"], name: "index_repositories_on_layout_type"
     t.index ["migration_method"], name: "index_repositories_on_migration_method"
     t.index ["migration_type"], name: "index_repositories_on_migration_type"
     t.index ["owner_token_hash"], name: "index_repositories_on_owner_token_hash"
     t.index ["source_type"], name: "index_repositories_on_source_type"
+    t.index ["total_revisions"], name: "index_repositories_on_total_revisions"
   end
 
   add_foreign_key "jobs", "repositories"

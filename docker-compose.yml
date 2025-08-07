@@ -47,6 +47,7 @@ services:
       DATABASE_URL: postgresql://postgres:password@db:5432/svn_to_gitlab_${RAILS_ENV:-development}
       REDIS_URL: redis://redis:6379/0
       RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}
+      SVN_BATCH_SIZE: 50
     depends_on:
       db:
         condition: service_healthy
@@ -54,6 +55,13 @@ services:
         condition: service_healthy
     stdin_open: true
     tty: true
+    # 메모리 제한 설정
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
 
   sidekiq:
     build: .
@@ -71,10 +79,18 @@ services:
       DATABASE_URL: postgresql://postgres:password@db:5432/svn_to_gitlab_${RAILS_ENV:-development}
       REDIS_URL: redis://redis:6379/0
       RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}
+      SVN_BATCH_SIZE: 50
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # 메모리 제한 설정 (Sidekiq이 실제 작업 수행)
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
 
 # Named volumes 섹션 제거 - 모두 bind mount로 변경됨

@@ -1,5 +1,5 @@
 class RepositoriesController < ApplicationController
-  before_action :set_repository, only: %i[ show edit update destroy validate edit_strategy update_strategy sync detect_structure edit_authors update_authors ]
+  before_action :set_repository, only: %i[ show edit update destroy validate edit_strategy update_strategy sync detect_structure edit_authors update_authors edit_layout update_layout validate_layout ]
 
   # GET /repositories or /repositories.json
   def index
@@ -38,9 +38,27 @@ class RepositoriesController < ApplicationController
 
   # PATCH/PUT /repositories/1 or /repositories/1.json
   def update
+    # SVN URL이 변경되었는지 확인
+    url_changed = @repository.svn_url != repository_params[:svn_url]
+    
     respond_to do |format|
       if @repository.update(repository_params)
-        format.html { redirect_to @repository, notice: "Repository was successfully updated." }
+        # SVN URL이 변경되면 관련 정보 초기화 (migration_method는 유지)
+        if url_changed
+          @repository.update_columns(
+            svn_structure: nil,
+            authors_mapping: nil,
+            layout_type: nil,
+            custom_trunk_path: nil,
+            custom_branches_path: nil,
+            custom_tags_path: nil,
+          )
+          notice_message = "Repository URL이 변경되었습니다. SVN 구조를 다시 감지해주세요."
+        else
+          notice_message = "Repository was successfully updated."
+        end
+        
+        format.html { redirect_to @repository, notice: notice_message }
         format.json { render :show, status: :ok, location: @repository }
       else
         format.html { render :edit, status: :unprocessable_entity }
@@ -102,8 +120,9 @@ class RepositoriesController < ApplicationController
   
   # POST /repositories/1/sync
   def sync
-    unless @repository.enable_incremental_sync?
-      redirect_to @repository, alert: "Incremental sync is not enabled for this repository"
+    # git-svn 방식으로 마이그레이션된 저장소만 증분 동기화 가능
+    unless @repository.migration_method == 'git-svn'
+      redirect_to @repository, alert: "증분 동기화는 Full Mode로 마이그레이션된 저장소에서만 사용 가능합니다"
       return
     end
     
@@ -126,9 +145,19 @@ class RepositoriesController < ApplicationController
     result = detector.call
     
     if result[:success]
+      # layout_type도 함께 업데이트
+      layout_type_mapping = {
+        'standard' => 'standard',
+        'partial_standard' => 'custom',
+        'non_standard' => 'custom'
+      }
+      
       @repository.update!(
         svn_structure: result[:structure],
-        authors_mapping: result[:authors]
+        authors_mapping: result[:authors],
+        layout_type: layout_type_mapping[result[:structure][:layout]] || 'custom',
+        latest_revision: result[:stats][:latest_revision],
+        total_revisions: result[:stats][:latest_revision]  # SVN에서는 latest가 곧 total
       )
       
       # Prepare response data
@@ -202,6 +231,61 @@ class RepositoriesController < ApplicationController
     
     redirect_to @repository, notice: "Authors mapping updated successfully."
   end
+  
+  # GET /repositories/1/edit_layout
+  def edit_layout
+    # 비표준 레이아웃인 경우에만 편집 가능
+    unless @repository.svn_structure.present?
+      redirect_to @repository, alert: "먼저 SVN 구조를 감지해주세요."
+      return
+    end
+    
+    svn_structure = @repository.parsed_svn_structure
+    layout = svn_structure['layout']
+    if layout == 'standard'
+      redirect_to @repository, notice: "표준 레이아웃은 수정할 필요가 없습니다."
+      return
+    end
+  end
+  
+  # PATCH /repositories/1/update_layout
+  def update_layout
+    layout_params = params.require(:repository).permit(
+      :layout_type, :custom_trunk_path, :custom_branches_path, :custom_tags_path
+    )
+    
+    if @repository.update(layout_params)
+      # svn_structure 업데이트
+      structure = @repository.svn_structure || {}
+      structure['layout'] = layout_params[:layout_type]
+      structure['custom_paths'] = {
+        'trunk' => layout_params[:custom_trunk_path],
+        'branches' => layout_params[:custom_branches_path],
+        'tags' => layout_params[:custom_tags_path]
+      }
+      @repository.update!(svn_structure: structure)
+      
+      redirect_to @repository, notice: "레이아웃 구성이 저장되었습니다."
+    else
+      render :edit_layout
+    end
+  end
+  
+  # POST /repositories/1/validate_layout
+  def validate_layout
+    validator = Repositories::SvnLayoutValidator.new(
+      @repository,
+      params[:trunk_path],
+      params[:branches_path],
+      params[:tags_path]
+    )
+    
+    result = validator.validate
+    
+    respond_to do |format|
+      format.json { render json: result }
+    end
+  end
 
   private
     # Use callbacks to share common setup or constraints between actions.
@@ -213,7 +297,8 @@ class RepositoriesController < ApplicationController
 
     # Only allow a list of trusted parameters through.
     def repository_params
-      params.require(:repository).permit(:name, :svn_url, :auth_type, :username, :encrypted_password, :ssh_key, :branch_option, :enable_incremental_sync)
+      params.require(:repository).permit(:name, :svn_url, :auth_type, :username, :encrypted_password, :ssh_key, :branch_option, 
+                                          :layout_type, :custom_trunk_path, :custom_branches_path, :custom_tags_path)
     end
     
     def strategy_params
@@ -223,11 +308,8 @@ class RepositoriesController < ApplicationController
         :preserve_history,
         :authors_mapping,
         :ignore_patterns,
-        :tag_strategy,
-        :branch_strategy,
-        :commit_message_prefix,
-        :large_file_handling,
-        :max_file_size_mb
+        :generate_gitignore,
+        :commit_message_prefix
       )
     end
     

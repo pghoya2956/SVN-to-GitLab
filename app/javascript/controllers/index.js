@@ -6,3 +6,6 @@ import { application } from "./application"
 
 import SvnDetectorController from "./svn_detector_controller"
 application.register("svn-detector", SvnDetectorController)
+
+import LayoutConfigController from "./layout_config_controller"
+application.register("layout-config", LayoutConfigController)

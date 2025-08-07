@@ -8,7 +8,21 @@
     </p>
   </div>
   <div class="header-actions">
-    <% if @repository.gitlab_project_id.present? && @repository.migration_type.present? && @repository.svn_structure.present? %>
+    <% 
+      # 마이그레이션 시작 가능 조건 체크
+      svn_structure = @repository.parsed_svn_structure
+      layout_type = svn_structure['layout'] || 'unknown'
+      layout_configured = layout_type == 'standard' || 
+                         (layout_type != 'standard' && @repository.layout_type == 'custom' && 
+                          (@repository.custom_trunk_path.present? || @repository.custom_branches_path.present? || @repository.custom_tags_path.present?))
+      
+      can_start_migration = @repository.gitlab_project_id.present? && 
+                           @repository.migration_type.present? && 
+                           @repository.svn_structure.present? &&
+                           layout_configured
+    %>
+    
+    <% if can_start_migration %>
       <%= link_to new_repository_job_path(@repository), class: "btn btn-success btn-lg", id: "start-migration-btn" do %>
         <i class="bi bi-rocket-takeoff me-2"></i>마이그레이션 시작
       <% end %>
@@ -16,7 +30,7 @@
       <button class="btn btn-secondary btn-lg" disabled 
               data-bs-toggle="tooltip" 
               data-bs-placement="bottom" 
-              title="모든 설정을 완료한 후 마이그레이션을 시작할 수 있습니다">
+              title="<%= !layout_configured ? '비표준 레이아웃의 경로 설정이 필요합니다' : '모든 설정을 완료한 후 마이그레이션을 시작할 수 있습니다' %>">
         <i class="bi bi-rocket me-2"></i>마이그레이션 시작
       </button>
     <% end %>
@@ -120,11 +134,6 @@
     <div class="empty-state">
       <i class="bi bi-inbox"></i>
       <p>No jobs have been run for this repository yet.</p>
-      <% if @repository.gitlab_project_id.present? && @repository.migration_type.present? %>
-        <%= link_to new_repository_job_path(@repository), class: "btn btn-primary" do %>
-          <i class="bi bi-play-circle-fill"></i> Start First Migration
-        <% end %>
-      <% end %>
     </div>
   <% end %>
 </div>

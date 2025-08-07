@@ -30,6 +30,9 @@ Rails.application.routes.draw do
       post :detect_structure
       get :edit_authors
       patch :update_authors
+      get :edit_layout
+      patch :update_layout
+      post :validate_layout
     end
     resources :jobs, only: [:new, :create]
   end
@@ -38,6 +41,7 @@ Rails.application.routes.draw do
     member do
       post :cancel
       post :resume
+      post :retry
       get :logs
     end
   end

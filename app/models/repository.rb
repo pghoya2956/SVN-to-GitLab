@@ -1,6 +1,9 @@
 class Repository < ApplicationRecord
   has_many :jobs, dependent: :destroy
   
+  # Callbacks for cleanup
+  before_destroy :cleanup_local_files
+  
   validates :name, presence: true
   validates :svn_url, presence: true
   validates :auth_type, inclusion: { in: %w[none basic ssh token] }
@@ -77,10 +80,15 @@ class Repository < ApplicationRecord
   # Helper methods for SVN structure
   def parsed_svn_structure
     return {} unless svn_structure.present?
-    return svn_structure if svn_structure.is_a?(Hash)
-    JSON.parse(svn_structure)
+    
+    # Ensure we always return a HashWithIndifferentAccess for consistent key access
+    if svn_structure.is_a?(Hash)
+      HashWithIndifferentAccess.new(svn_structure)
+    else
+      HashWithIndifferentAccess.new(JSON.parse(svn_structure))
+    end
   rescue JSON::ParserError
-    {}
+    HashWithIndifferentAccess.new
   end
   
   # Set password (encrypt before saving)
@@ -108,18 +116,103 @@ class Repository < ApplicationRecord
     parsed_svn_structure['standard_layout'] == true
   end
   
-  # Get SVN trunk path
+  # Get SVN trunk path (커스텀 경로 우선)
   def trunk_path
-    parsed_svn_structure.dig('trunk') || 'trunk'
+    custom_trunk_path.presence || parsed_svn_structure.dig('trunk') || 'trunk'
   end
   
-  # Get SVN branches path
+  # Get SVN branches path (커스텀 경로 우선)
   def branches_path
-    parsed_svn_structure.dig('branches') || 'branches'
+    custom_branches_path.presence || parsed_svn_structure.dig('branches') || 'branches'
   end
   
-  # Get SVN tags path
+  # Get SVN tags path (커스텀 경로 우선)
   def tags_path
-    parsed_svn_structure.dig('tags') || 'tags'
+    custom_tags_path.presence || parsed_svn_structure.dig('tags') || 'tags'
+  end
+  
+  # Git SVN 명령에 사용할 레이아웃 옵션 생성 (단일 원천)
+  def git_svn_layout_options
+    options = []
+    
+    # URL에 이미 특정 경로가 포함된 경우 레이아웃 옵션 생략
+    # 더 정확한 패턴 매칭: URL 끝에 /trunk, /branches, /tags가 있거나 그 다음에 /가 오는 경우
+    if svn_url =~ /\/(trunk|branches|tags)(\/.+)?$/
+      Rails.logger.info "Repository #{id}: URL ends with /#{$1}, skipping layout options"
+      return options
+    end
+    
+    # 커스텀 레이아웃 우선
+    if layout_type == 'custom' && (custom_trunk_path.present? || custom_branches_path.present? || custom_tags_path.present?)
+      options << ['--trunk', custom_trunk_path] if custom_trunk_path.present?
+      options << ['--branches', custom_branches_path] if custom_branches_path.present?
+      options << ['--tags', custom_tags_path] if custom_tags_path.present?
+    # 표준 레이아웃
+    elsif parsed_svn_structure['layout'] == 'standard' || layout_type == 'standard'
+      options << '--stdlayout'
+    # SVN 구조 기반
+    elsif trunk? || branches? || tags?
+      options << ['--trunk', trunk_path] if trunk?
+      options << ['--branches', branches_path] if branches?
+      options << ['--tags', tags_path] if tags?
+    # 기본값
+    else
+      options << '--stdlayout'
+    end
+    
+    options.flatten
+  end
+  
+  private
+  
+  def cleanup_local_files
+    cleanup_git_repository
+    cleanup_authors_file
+    cleanup_other_temp_files
+  rescue => e
+    Rails.logger.error "Error cleaning up files for repository #{id}: #{e.message}"
+    # Don't prevent deletion even if cleanup fails
+  end
+  
+  def cleanup_git_repository
+    # Job별 디렉토리 구조이므로 전체 repository_{id} 디렉토리를 삭제
+    parent_dir = Rails.root.join('git_repos', "repository_#{id}")
+    if File.directory?(parent_dir)
+      # 모든 job_* 디렉토리가 포함된 상위 디렉토리 삭제
+      FileUtils.rm_rf(parent_dir)
+      Rails.logger.info "Cleaned up all job directories for repository #{id} at #{parent_dir}"
+    end
+  end
+  
+  def cleanup_authors_file
+    # Authors 파일 경로들
+    authors_paths = [
+      Rails.root.join('tmp', 'authors', "repository_#{id}_authors.txt"),
+      Rails.root.join('tmp', 'authors_files', "#{id}_authors.txt"),
+      authors_file_path  # DB에 저장된 경로가 있으면 그것도 삭제
+    ].compact.uniq
+    
+    authors_paths.each do |path|
+      if File.exist?(path)
+        File.delete(path)
+        Rails.logger.info "Cleaned up authors file at #{path}"
+      end
+    end
+  end
+  
+  def cleanup_other_temp_files
+    # 기타 임시 파일들 (예: 체크포인트 파일 등)
+    temp_patterns = [
+      Rails.root.join('tmp', "repository_#{id}_*"),
+      Rails.root.join('tmp', 'checkpoints', "repository_#{id}_*")
+    ]
+    
+    temp_patterns.each do |pattern|
+      Dir.glob(pattern).each do |file|
+        File.delete(file) if File.file?(file)
+        FileUtils.rm_rf(file) if File.directory?(file)
+        Rails.logger.info "Cleaned up temp file/directory at #{file}"
+      end
+    end
   end
 end

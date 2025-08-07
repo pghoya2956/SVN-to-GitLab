@@ -1,4 +1,4 @@
-<%= form_with(model: repository, local: false, data: { turbo_frame: "_top" }) do |form| %>
+<%= form_with(model: repository, local: false, data: { turbo_frame: "_top" }, html: { autocomplete: "off" }) do |form| %>
   <% if repository.errors.any? %>
     <div class="alert alert-danger">
       <h6><%= pluralize(repository.errors.count, "error") %> prohibited this repository from being saved:</h6>
@@ -11,41 +11,59 @@
   <% end %>
 
   <div class="form-group">
-    <%= form.label :name, class: "form-label" do %>
-      <i class="bi bi-folder me-1"></i>Repository Name
-    <% end %>
-    <%= form.text_field :name, class: "form-control", placeholder: "my-awesome-project", required: true %>
-    <div class="form-text">A descriptive name for your repository</div>
-  </div>
-
-  <div class="form-group">
     <%= form.label :svn_url, class: "form-label" do %>
       <i class="bi bi-link-45deg me-1"></i>SVN Repository URL
     <% end %>
-    <%= form.text_field :svn_url, class: "form-control", placeholder: "https://svn.example.com/repos/myproject", required: true %>
+    <%= form.text_field :svn_url, 
+        class: "form-control", 
+        placeholder: "https://svn.example.com/repos/myproject", 
+        required: true,
+        autocomplete: "off",
+        "data-form-type": "other",
+        "data-lpignore": "true" %>
     <div class="form-text">The full URL to your SVN repository</div>
   </div>
+  
+  <div class="form-group">
+    <%= form.label :name, class: "form-label" do %>
+      <i class="bi bi-folder me-1"></i>Repository Name
+    <% end %>
+    <%= form.text_field :name, 
+        class: "form-control", 
+        placeholder: "my-awesome-project", 
+        required: true,
+        autocomplete: "new-password",
+        "data-form-type": "other",
+        "data-lpignore": "true",
+        autocorrect: "off",
+        autocapitalize: "off",
+        spellcheck: "false",
+        role: "presentation" %>
+    <div class="form-text">A descriptive name for your repository</div>
+  </div>
+
 
   <div class="form-group">
     <%= form.label :auth_type, class: "form-label" do %>
       <i class="bi bi-shield-lock me-1"></i>Authentication Type
     <% end %>
     <%= form.select :auth_type, options_for_select([
+      ["없음 (공개 저장소)", "none"],
       ["Username/Password", "basic"],
       ["SSH Key", "ssh"],
       ["Access Token", "token"]
-    ], repository.auth_type), {}, class: "form-select" %>
+    ], repository.auth_type || "none"), {}, class: "form-select" %>
     <div class="form-text">Choose how to authenticate with your SVN server</div>
   </div>
 
-  <div class="form-group" id="username-field">
+  <div class="form-group <%= 'd-none' if (repository.auth_type || 'none') == 'none' %>" id="username-field">
     <%= form.label :username, class: "form-label" do %>
       <i class="bi bi-person me-1"></i>Username
     <% end %>
     <%= form.text_field :username, class: "form-control", placeholder: "svn-user" %>
   </div>
 
-  <div class="form-group" id="password-field">
+  <div class="form-group <%= 'd-none' if (repository.auth_type || 'none') == 'none' %>" id="password-field">
     <%= form.label :encrypted_password, class: "form-label" do %>
       <i class="bi bi-key me-1"></i>Password
     <% end %>
@@ -73,15 +91,17 @@
   
   <% if repository.persisted? && repository.initial_migration_completed? %>
     <div class="form-group">
-      <div class="form-check">
-        <%= form.check_box :enable_incremental_sync, class: "form-check-input" %>
-        <%= form.label :enable_incremental_sync, class: "form-check-label" do %>
-          <i class="bi bi-arrow-repeat me-1"></i>Enable Incremental Sync
-        <% end %>
-        <div class="form-text">
-          Automatically sync new SVN commits to GitLab periodically
+      <% if repository.migration_method == 'simple' %>
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>
+          <strong>Incremental Sync Not Available</strong>
+          <p class="mb-0 mt-2">
+            Incremental sync is only available for repositories migrated with <strong>Full History</strong> mode.
+            Simple mode only captures the latest revision and cannot track subsequent changes.
+            To enable incremental sync, please re-migrate this repository using Full History mode.
+          </p>
         </div>
-      </div>
+      <% end %>
     </div>
   <% end %>
 
@@ -108,6 +128,64 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  // Prevent autofill on repository name field
+  const nameField = document.getElementById('repository_name');
+  if (nameField) {
+    // Clear any autofilled value on load
+    setTimeout(() => {
+      if (nameField.value && !nameField.dataset.userInput) {
+        nameField.value = '';
+      }
+    }, 100);
+    
+    // Prevent autofill by making field readonly initially, then editable on focus
+    nameField.setAttribute('readonly', 'readonly');
+    nameField.addEventListener('focus', function() {
+      this.removeAttribute('readonly');
+    });
+    
+    // Track user input
+    nameField.addEventListener('input', function() {
+      this.dataset.userInput = 'true';
+    });
+  }
+  
+  // Auto-fill repository name from SVN URL
+  const svnUrlField = document.getElementById('repository_svn_url');
+  
+  if (svnUrlField && nameField) {
+    svnUrlField.addEventListener('input', function() {
+      // Only auto-fill if name field is empty or was previously auto-filled
+      if (!nameField.value || nameField.dataset.autoFilled === 'true') {
+        const url = this.value.trim();
+        if (url) {
+          // Make field editable temporarily
+          nameField.removeAttribute('readonly');
+          // Use the full URL as the name
+          nameField.value = url;
+          nameField.dataset.autoFilled = 'true';
+          nameField.dataset.userInput = 'false';
+        } else {
+          nameField.value = '';
+          nameField.dataset.autoFilled = 'true';
+        }
+      }
+    });
+    
+    // If user manually types in name field, mark it as not auto-filled
+    nameField.addEventListener('input', function() {
+      if (this.dataset.autoFilled !== 'true') {
+        delete this.dataset.autoFilled;
+      }
+    });
+    
+    // On focus, mark as not auto-filled so user can override
+    nameField.addEventListener('focus', function() {
+      delete this.dataset.autoFilled;
+      this.removeAttribute('readonly');
+    });
+  }
+  
   const authTypeField = document.getElementById('repository_auth_type');
   const usernameField = document.getElementById('username-field');
   const passwordField = document.getElementById('password-field');
@@ -116,11 +194,18 @@ document.addEventListener('DOMContentLoaded', function() {
   function toggleAuthFields() {
     const authType = authTypeField.value;
     
-    if (authType === 'ssh') {
+    if (authType === 'none') {
+      // 인증 없음 - 모든 필드 숨김
+      usernameField.classList.add('d-none');
+      passwordField.classList.add('d-none');
+      sshKeyField.classList.add('d-none');
+    } else if (authType === 'ssh') {
+      // SSH 키 인증
       usernameField.classList.add('d-none');
       passwordField.classList.add('d-none');
       sshKeyField.classList.remove('d-none');
     } else {
+      // basic 또는 token - 사용자명/비밀번호 표시
       usernameField.classList.remove('d-none');
       passwordField.classList.remove('d-none');
       sshKeyField.classList.add('d-none');

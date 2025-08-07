@@ -1,0 +1,268 @@
+<div class="container mt-4">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+          <h4 class="mb-0">
+            <i class="bi bi-diagram-3 me-2"></i>SVN 레이아웃 구성
+          </h4>
+        </div>
+        
+        <div class="card-body" data-controller="layout-config">
+          <%= form_with model: @repository, url: update_layout_repository_path(@repository), local: true do |f| %>
+            
+            <!-- 현재 감지된 구조 표시 -->
+            <% if @repository.svn_structure.present? %>
+              <% svn_struct = @repository.svn_structure %>
+              <% layout_type = svn_struct['layout'] %>
+              
+              <div class="alert alert-<%= layout_type == 'partial_standard' ? 'warning' : 'info' %> mb-4">
+                <h6 class="alert-heading">
+                  <i class="bi bi-info-circle me-2"></i>감지된 구조
+                </h6>
+                <div class="small">
+                  <% if layout_type == 'non_standard' %>
+                    <p class="mb-2">비표준 레이아웃이 감지되었습니다. 정확한 마이그레이션을 위해 경로를 직접 지정해주세요.</p>
+                  <% elsif layout_type == 'partial_standard' %>
+                    <p class="mb-2 text-danger fw-bold">⚠️ 부분 표준 레이아웃: 일부 표준 디렉토리가 누락되었습니다.</p>
+                    
+                    <!-- 감지된 구조 상세 표시 -->
+                    <div class="mb-3">
+                      <strong>표준 디렉토리 상태:</strong>
+                      <ul class="mb-2">
+                        <li class="<%= svn_struct['detected_trunk'] ? 'text-success' : 'text-danger' %>">
+                          trunk: <%= svn_struct['detected_trunk'] ? '✓ 존재' : '✗ 없음' %>
+                        </li>
+                        <li class="<%= svn_struct['detected_branches'] ? 'text-success' : 'text-danger' %>">
+                          branches: <%= svn_struct['detected_branches'] ? '✓ 존재' : '✗ 없음' %>
+                        </li>
+                        <li class="<%= svn_struct['detected_tags'] ? 'text-success' : 'text-danger' %>">
+                          tags: <%= svn_struct['detected_tags'] ? '✓ 존재' : '✗ 없음' %>
+                        </li>
+                      </ul>
+                    </div>
+                    
+                    <!-- trunk가 없는 경우 가이드 -->
+                    <% unless svn_struct['detected_trunk'] %>
+                      <div class="alert alert-danger p-2 mb-2">
+                        <strong>🚨 trunk 디렉토리가 없습니다!</strong>
+                        <p class="mb-1 mt-2">다음 중 하나를 선택하세요:</p>
+                        <ol class="mb-0">
+                          <li><strong>전체를 trunk로 지정:</strong> Trunk 경로를 비워두면 저장소 전체가 trunk로 취급됩니다</li>
+                          <li><strong>특정 디렉토리 지정:</strong> 아래 목록에서 메인 개발 디렉토리를 선택하세요</li>
+                        </ol>
+                      </div>
+                    <% end %>
+                  <% end %>
+                  
+                  <% # 디렉토리 구조 표시 %>
+                  <% tree_data = svn_struct['tree_structure'] %>
+                  <% if tree_data.present? && tree_data.is_a?(Hash) %>
+                    <div class="bg-light p-2 rounded">
+                      <strong>📁 디렉토리 구조 (2단계):</strong>
+                      <div class="mt-2 font-monospace small" style="max-height: 300px; overflow-y: auto; white-space: pre;">
+<% tree_data.each_with_index do |(dir_name, sub_items), index| %>
+<%= index == tree_data.size - 1 ? '└── ' : '├── ' %>📁 <%= dir_name %>/
+<% if sub_items.present? %>
+<% sub_items.first(10).each_with_index do |sub_item, sub_index| %>
+<%= index == tree_data.size - 1 ? '    ' : '│   ' %><%= sub_index == sub_items.size - 1 || sub_index == 9 ? '└── ' : '├── ' %><%= sub_item.end_with?('/') ? '📁' : '📄' %> <%= sub_item %>
+<% end %>
+<% if sub_items.size > 10 %>
+<%= index == tree_data.size - 1 ? '    ' : '│   ' %>└── ... (<%= sub_items.size - 10 %>개 더)
+<% end %>
+<% end %>
+<% end %>
+                      </div>
+                    </div>
+                  <% elsif svn_struct['root_entries'].present? %>
+                    <div class="bg-light p-2 rounded">
+                      <strong>📁 디렉토리 구조:</strong>
+                      <div class="mt-2 font-monospace small" style="max-height: 300px; overflow-y: auto; white-space: pre;">
+<% svn_struct['root_entries'].each_with_index do |entry, index| %>
+<%= index == svn_struct['root_entries'].size - 1 ? '└── ' : '├── ' %><%= entry.end_with?('/') ? '📁' : '📄' %> <%= entry.chomp('/') %>
+<% end %>
+                      </div>
+                    </div>
+                    
+                    <% # 추천 대체 경로 표시
+                       if svn_struct['alternative_trunk'] || svn_struct['alternative_branches'] || svn_struct['alternative_tags'] %>
+                      <div class="mt-2 p-2 bg-info bg-opacity-10 rounded">
+                        <strong>💡 추천 매핑:</strong>
+                        <ul class="mb-0 mt-1">
+                          <% if svn_struct['alternative_trunk'] && !svn_struct['detected_trunk'] %>
+                            <li>Trunk: <code><%= svn_struct['alternative_trunk'] %></code></li>
+                          <% end %>
+                          <% if svn_struct['alternative_branches'] && !svn_struct['detected_branches'] %>
+                            <li>Branches: <code><%= svn_struct['alternative_branches'] %></code></li>
+                          <% end %>
+                          <% if svn_struct['alternative_tags'] && !svn_struct['detected_tags'] %>
+                            <li>Tags: <code><%= svn_struct['alternative_tags'] %></code></li>
+                          <% end %>
+                        </ul>
+                      </div>
+                    <% end %>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
+            
+            <!-- 레이아웃 타입 선택 -->
+            <div class="mb-4">
+              <%= f.label :layout_type, "레이아웃 타입", class: "form-label fw-bold" %>
+              <%= f.select :layout_type, 
+                  options_for_select([
+                    ['표준 레이아웃 (trunk/branches/tags)', 'standard'],
+                    ['커스텀 레이아웃 (직접 지정)', 'custom'],
+                    ['평면 구조 (브랜치 없음)', 'flat']
+                  ], @repository.layout_type || 'custom'),
+                  {},
+                  class: "form-select",
+                  data: { action: "change->layout-config#toggleCustomPaths" } %>
+              <div class="form-text">
+                <ul class="mb-0 mt-2">
+                  <li><strong>표준:</strong> SVN 권장 구조 (trunk, branches, tags)</li>
+                  <li><strong>커스텀:</strong> 조직별 커스텀 구조 (main, develop 등)</li>
+                  <li><strong>평면:</strong> 브랜치 없이 단일 디렉토리</li>
+                </ul>
+              </div>
+            </div>
+            
+            <!-- 커스텀 경로 입력 -->
+            <div id="custom-paths" data-layout-config-target="customPaths" 
+                 class="<%= 'd-none' if @repository.layout_type == 'standard' %>">
+              
+              <div class="alert alert-warning mb-3">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                <strong>주의:</strong> 정확한 경로를 입력하세요. 잘못된 경로는 히스토리 손실을 야기할 수 있습니다.
+              </div>
+              
+              <!-- Trunk 경로 -->
+              <div class="mb-3">
+                <%= f.label :custom_trunk_path, "Trunk 경로 (메인 개발 라인)", class: "form-label" %>
+                <%= f.text_field :custom_trunk_path, 
+                    class: "form-control",
+                    placeholder: "예: trunk, main, src, development/stable",
+                    value: @repository.custom_trunk_path || @repository.svn_structure&.dig('alternative_trunk') || @repository.svn_structure&.dig('detected_trunk'),
+                    data: { "layout-config-target": "trunkPath" } %>
+                <div class="form-text">
+                  메인 개발이 이루어지는 디렉토리 경로. <strong class="text-danger">비워두면 전체를 trunk로 간주합니다.</strong>
+                </div>
+              </div>
+              
+              <!-- Branches 경로 -->
+              <div class="mb-3">
+                <%= f.label :custom_branches_path, "Branches 경로 (선택사항)", class: "form-label" %>
+                <%= f.text_field :custom_branches_path, 
+                    class: "form-control",
+                    placeholder: "예: branches, features, development/features",
+                    value: @repository.custom_branches_path || @repository.svn_structure&.dig('alternative_branches') || @repository.svn_structure&.dig('detected_branches'),
+                    data: { "layout-config-target": "branchesPath" } %>
+                <div class="form-text">
+                  브랜치가 위치한 디렉토리. 브랜치가 없으면 비워두세요.
+                </div>
+              </div>
+              
+              <!-- Tags 경로 -->
+              <div class="mb-3">
+                <%= f.label :custom_tags_path, "Tags 경로 (선택사항)", class: "form-label" %>
+                <%= f.text_field :custom_tags_path, 
+                    class: "form-control",
+                    placeholder: "예: tags, releases, versions",
+                    value: @repository.custom_tags_path || @repository.svn_structure&.dig('alternative_tags') || @repository.svn_structure&.dig('detected_tags'),
+                    data: { "layout-config-target": "tagsPath" } %>
+                <div class="form-text">
+                  태그(릴리즈)가 위치한 디렉토리. 태그가 없으면 비워두세요.
+                </div>
+              </div>
+              
+              <!-- 경로 검증 버튼 -->
+              <div class="mb-3">
+                <button type="button" 
+                        class="btn btn-outline-primary"
+                        data-action="click->layout-config#validatePaths"
+                        data-url="<%= validate_layout_repository_path(@repository) %>">
+                  <i class="bi bi-check-circle me-2"></i>경로 검증
+                </button>
+                <div id="validation-result" class="mt-2"></div>
+              </div>
+            </div>
+            
+            <!-- 제출 버튼 -->
+            <div class="d-flex justify-content-between">
+              <%= link_to repository_path(@repository), class: "btn btn-secondary" do %>
+                <i class="bi bi-arrow-left me-2"></i>취소
+              <% end %>
+              <%= f.submit "저장", class: "btn btn-primary" %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+      
+      <!-- 도움말 -->
+      <div class="card mt-3">
+        <div class="card-body">
+          <h6 class="card-title">
+            <i class="bi bi-question-circle me-2"></i>경로 입력 예시
+          </h6>
+          <div class="small">
+            <p><strong>표준 구조:</strong></p>
+            <pre class="bg-light p-2 rounded">repository/
+├── trunk/       → 메인 개발
+├── branches/    → 기능 브랜치
+└── tags/        → 릴리즈 태그</pre>
+            
+            <p><strong>커스텀 구조 예시:</strong></p>
+            <pre class="bg-light p-2 rounded">repository/
+├── main/        → trunk 경로: "main"
+├── features/    → branches 경로: "features"
+└── releases/    → tags 경로: "releases"</pre>
+            
+            <p><strong>깊은 구조 예시:</strong></p>
+            <pre class="bg-light p-2 rounded">repository/
+└── code/
+    ├── stable/  → trunk 경로: "code/stable"
+    └── dev/     → branches 경로: "code/dev"</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .tree-line {
+    white-space: pre;
+    font-family: 'Courier New', monospace;
+    line-height: 1.4;
+  }
+  .tree-dir-link {
+    color: #0066cc;
+    cursor: pointer;
+  }
+  .tree-dir-link:hover {
+    text-decoration: underline !important;
+    color: #0052a3;
+  }
+  .tree-dir-link.selected {
+    background-color: #fff3cd;
+    padding: 2px 4px;
+    border-radius: 3px;
+  }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const layoutTypeSelect = document.getElementById('repository_layout_type');
+  const customPaths = document.getElementById('custom-paths');
+  
+  if (layoutTypeSelect && customPaths) {
+    layoutTypeSelect.addEventListener('change', function() {
+      if (this.value === 'standard') {
+        customPaths.classList.add('d-none');
+      } else {
+        customPaths.classList.remove('d-none');
+      }
+    });
+  }
+});
+</script>

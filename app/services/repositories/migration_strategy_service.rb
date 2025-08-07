@@ -6,24 +6,6 @@ module Repositories
       'trunk_only' => 'Trunk Only (No branches/tags)'
     }.freeze
     
-    TAG_STRATEGIES = {
-      'all' => 'Migrate all tags',
-      'recent' => 'Recent tags only (last 6 months)',
-      'none' => 'Skip tags'
-    }.freeze
-    
-    BRANCH_STRATEGIES = {
-      'all' => 'Migrate all branches',
-      'active' => 'Active branches only',
-      'trunk' => 'Trunk/master only',
-      'none' => 'Skip branches'
-    }.freeze
-    
-    LARGE_FILE_STRATEGIES = {
-      'git-lfs' => 'Use Git LFS',
-      'exclude' => 'Exclude large files',
-      'include' => 'Include as regular files'
-    }.freeze
     
     def initialize(repository)
       @repository = repository
@@ -41,25 +23,6 @@ module Repositories
         errors << "Invalid migration type"
       end
       
-      # Validate tag strategy
-      unless TAG_STRATEGIES.keys.include?(@repository.tag_strategy)
-        errors << "Invalid tag strategy"
-      end
-      
-      # Validate branch strategy
-      unless BRANCH_STRATEGIES.keys.include?(@repository.branch_strategy)
-        errors << "Invalid branch strategy"
-      end
-      
-      # Validate large file handling
-      unless LARGE_FILE_STRATEGIES.keys.include?(@repository.large_file_handling)
-        errors << "Invalid large file handling strategy"
-      end
-      
-      # Validate max file size
-      if @repository.max_file_size_mb.to_i <= 0 || @repository.max_file_size_mb.to_i > 1000
-        errors << "Max file size must be between 1 and 1000 MB"
-      end
       
       # Validate authors mapping format
       if @repository.authors_mapping.present?
@@ -130,28 +93,40 @@ module Repositories
     end
     
     def estimated_migration_time
-      # Rough estimation based on repository size and strategy
-      base_time = case @repository.migration_type
-                  when 'fast' then 5
-                  when 'trunk_only' then 2
-                  else 10
-                  end
+      # Simple mode는 항상 빠름 (최근 10개 리비전만)
+      if @repository.migration_method == 'simple'
+        return 5
+      end
       
-      # Adjust based on history preservation
-      base_time *= 2 if @repository.preserve_history
+      # Full mode: 리비전 수 기반 추정
+      total_revisions = @repository.total_revisions || 1000  # 기본값 1000
       
-      # Return in minutes
-      base_time
+      # 리비전당 처리 시간 추정 (초)
+      # 소규모: 0.5초, 중규모: 1초, 대규모: 2초
+      seconds_per_revision = if total_revisions < 1000
+                              0.5  # 소규모 프로젝트
+                            elsif total_revisions < 5000
+                              1.0  # 중규모 프로젝트
+                            else
+                              2.0  # 대규모 프로젝트
+                            end
+      
+      # Authors 매핑이 많으면 시간 추가 (author 확인 오버헤드)
+      if @repository.authors_mapping.present? && @repository.authors_mapping.size > 10
+        seconds_per_revision *= 1.2
+      end
+      
+      # 전체 예상 시간 (분)
+      estimated_minutes = (total_revisions * seconds_per_revision / 60.0).ceil
+      
+      # 최소 5분, 최대 480분(8시간)
+      [[estimated_minutes, 5].max, 480].min
     end
     
     def migration_summary
       {
         type: MIGRATION_TYPES[@repository.migration_type],
         preserve_history: @repository.preserve_history,
-        tag_strategy: TAG_STRATEGIES[@repository.tag_strategy],
-        branch_strategy: BRANCH_STRATEGIES[@repository.branch_strategy],
-        large_file_handling: LARGE_FILE_STRATEGIES[@repository.large_file_handling],
-        max_file_size_mb: @repository.max_file_size_mb,
         authors_count: parse_authors_mapping.keys.count,
         ignore_patterns_count: parse_ignore_patterns.count,
         estimated_time_minutes: estimated_migration_time
@@ -167,11 +142,8 @@ module Repositories
         :preserve_history,
         :authors_mapping,
         :ignore_patterns,
-        :tag_strategy,
-        :branch_strategy,
-        :commit_message_prefix,
-        :large_file_handling,
-        :max_file_size_mb
+        :generate_gitignore,
+        :commit_message_prefix
       )
     end
   end

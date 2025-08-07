@@ -5,7 +5,7 @@
   <div class="overall-progress mb-4">
     <div class="d-flex justify-content-between mb-2">
       <span>전체 진행률</span>
-      <strong class="progress-percentage text-primary"><%= job.progress %>%</strong>
+      <strong class="progress-percentage text-primary" data-progress-text><%= job.progress %>%</strong>
     </div>
     <div class="progress" style="height: 30px;">
       <div class="progress-bar progress-bar-striped progress-bar-animated migration-progress-bar" 
@@ -28,13 +28,13 @@
         <div class="col-md-6">
           <dl class="row">
             <dt class="col-sm-6">처리 중인 리비전:</dt>
-            <dd class="col-sm-6" id="current-revision">
-              <strong><%= job.current_revision || 0 %> / <%= job.total_revisions || '?' %></strong>
+            <dd class="col-sm-6">
+              <strong><span data-revisions><%= job.current_revision || 0 %> / <%= job.total_revisions || '?' %></span></strong>
             </dd>
             
             <dt class="col-sm-6">경과 시간:</dt>
-            <dd class="col-sm-6" id="elapsed-time">
-              <%= job.formatted_duration %>
+            <dd class="col-sm-6">
+              <span data-duration><%= job.formatted_duration %></span>
             </dd>
           </dl>
         </div>
@@ -42,13 +42,13 @@
         <div class="col-md-6">
           <dl class="row">
             <dt class="col-sm-6">예상 완료 시간:</dt>
-            <dd class="col-sm-6" id="eta">
-              <strong><%= job.formatted_eta || '계산 중...' %></strong>
+            <dd class="col-sm-6">
+              <strong><span data-eta><%= job.formatted_eta || '계산 중...' %></span></strong>
             </dd>
             
             <dt class="col-sm-6">처리 속도:</dt>
-            <dd class="col-sm-6" id="processing-speed">
-              <%= job.processing_speed ? "#{job.processing_speed.round(1)} 리비전/초" : "-" %>
+            <dd class="col-sm-6">
+              <span data-speed><%= job.processing_speed ? "#{job.processing_speed.round(1)} 리비전/초" : "-" %></span>
             </dd>
           </dl>
         </div>

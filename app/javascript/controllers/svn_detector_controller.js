@@ -45,24 +45,31 @@ export default class extends Controller {
   }
   
   showLoading() {
-    this.spinnerTarget.classList.remove('d-none');
-    this.buttonTextTarget.textContent = "SVN 구조 분석 중...";
+    if (this.hasSpinnerTarget) {
+      this.spinnerTarget.classList.remove('d-none');
+    }
+    if (this.hasButtonTextTarget) {
+      this.buttonTextTarget.textContent = "SVN 구조 분석 중...";
+    }
     this.buttonTarget.disabled = true;
     
-    // 기존 결과 숨기기
+    // 기존 결과 영역 비우기 (중복 로딩 표시 제거)
     if (this.hasResultTarget) {
-      this.resultTarget.innerHTML = `
-        <div class="alert alert-info">
-          <i class="bi bi-hourglass-split spinner-border spinner-border-sm me-2"></i>
-          SVN 저장소 구조를 분석하고 있습니다. 잠시만 기다려주세요...
-        </div>
-      `;
+      this.resultTarget.innerHTML = '';
     }
   }
   
   hideLoading() {
-    this.spinnerTarget.classList.add('d-none');
-    this.buttonTextTarget.textContent = "SVN 구조 감지";
+    if (this.hasSpinnerTarget) {
+      this.spinnerTarget.classList.add('d-none');
+    }
+    if (this.hasButtonTextTarget) {
+      // 버튼 텍스트를 원래대로 복원 (다시 감지 버튼인지 확인)
+      const originalText = this.buttonTarget.querySelector('.bi-arrow-clockwise') ? 
+        '<i class="bi bi-arrow-clockwise me-1"></i>다시 감지' : 
+        '<i class="bi bi-search me-1"></i>구조 감지하기';
+      this.buttonTextTarget.innerHTML = originalText;
+    }
     this.buttonTarget.disabled = false;
   }
   

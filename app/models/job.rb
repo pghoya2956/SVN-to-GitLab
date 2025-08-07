@@ -1,6 +1,9 @@
 class Job < ApplicationRecord
   belongs_to :repository
   
+  # Callbacks for cleanup
+  after_destroy :cleanup_job_directory
+  
   # 상태 관리
   validates :status, inclusion: { in: %w[pending running completed failed cancelled] }
   validates :job_type, presence: true
@@ -123,13 +126,17 @@ class Job < ApplicationRecord
   
   def append_output(message)
     self.output_log ||= ""
-    self.output_log += "[#{Time.current.strftime('%Y-%m-%d %H:%M:%S')}] #{message}\n"
+    # Use KST timezone
+    Time.zone = 'Asia/Seoul' if Time.zone.nil?
+    self.output_log += "[#{Time.zone.now.strftime('%Y-%m-%d %H:%M:%S')}] #{message}\n"
     save
   end
   
   def append_error(message)
     self.error_log ||= ""
-    self.error_log += "[#{Time.current.strftime('%Y-%m-%d %H:%M:%S')}] #{message}\n"
+    # Use KST timezone
+    Time.zone = 'Asia/Seoul' if Time.zone.nil?
+    self.error_log += "[#{Time.zone.now.strftime('%Y-%m-%d %H:%M:%S')}] #{message}\n"
     save
   end
   
@@ -189,9 +196,37 @@ class Job < ApplicationRecord
   
   # 재개 가능 여부 확인
   def can_resume?
-    resumable? && 
-    (failed? || cancelled?)
-    # 재시도 횟수 제한 제거
+    return false unless resumable? && (failed? || cancelled?)
+    
+    # Repository 설정이 변경되었는지 확인
+    return false if repository_config_changed?
+    
+    true
+  end
+  
+  # Repository 설정 변경 여부 확인
+  def repository_config_changed?
+    return false unless checkpoint_data.present? && checkpoint_data['repository_snapshot'].present?
+    
+    snapshot = checkpoint_data['repository_snapshot']
+    
+    # 중요한 설정들이 변경되었는지 확인
+    current_config = {
+      'authors_mapping' => repository.authors_mapping,
+      'layout_type' => repository.layout_type,
+      'custom_trunk_path' => repository.custom_trunk_path,
+      'custom_branches_path' => repository.custom_branches_path,
+      'custom_tags_path' => repository.custom_tags_path,
+      'svn_structure' => repository.svn_structure
+    }
+    
+    if snapshot != current_config
+      append_output("경고: Repository 설정이 변경되어 재개할 수 없습니다.")
+      append_output("변경된 설정으로 새로 시작하려면 Retry를 사용하세요.")
+      true
+    else
+      false
+    end
   end
   
   def can_delete?
@@ -206,6 +241,15 @@ class Job < ApplicationRecord
       phase_details: phase_details,
       git_path: repository.local_git_path,
       last_revision: current_revision,
+      # Repository 설정 스냅샷 저장 (Resume 시 검증용)
+      repository_snapshot: {
+        'authors_mapping' => repository.authors_mapping,
+        'layout_type' => repository.layout_type,
+        'custom_trunk_path' => repository.custom_trunk_path,
+        'custom_branches_path' => repository.custom_branches_path,
+        'custom_tags_path' => repository.custom_tags_path,
+        'svn_structure' => repository.svn_structure
+      },
       additional_data: data
     }
     
@@ -232,5 +276,25 @@ class Job < ApplicationRecord
       started_at: Time.current
     )
     append_output("작업 재개 중... (시도 #{retry_count}/3)")
+  end
+  
+  private
+  
+  def cleanup_job_directory
+    # Job별 디렉토리가 있으면 삭제
+    if checkpoint_data && checkpoint_data['git_path'].present?
+      git_path = checkpoint_data['git_path']
+      
+      # Job ID가 포함된 경로인지 확인 (Job별 디렉토리인 경우만 삭제)
+      if git_path.include?("job_#{id}")
+        if File.directory?(git_path)
+          FileUtils.rm_rf(git_path)
+          Rails.logger.info "Cleaned up job directory: #{git_path}"
+        end
+      end
+    end
+  rescue => e
+    Rails.logger.error "Error cleaning up job directory: #{e.message}"
+    # Don't prevent deletion even if cleanup fails
   end
 end

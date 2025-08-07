@@ -1,5 +1,5 @@
 class JobsController < ApplicationController
-  before_action :set_job, only: [:show, :cancel, :resume, :logs, :destroy]
+  before_action :set_job, only: [:show, :cancel, :resume, :retry, :logs, :destroy]
   before_action :set_repository, only: [:new, :create]
   
   def index
@@ -42,6 +42,11 @@ class JobsController < ApplicationController
     @job.job_type = 'migration'
     @job.parameters = build_job_parameters.to_json
     
+    # Repository에서 정보 복사
+    if @repository.total_revisions.present?
+      @job.total_revisions = @repository.total_revisions
+    end
+    
     if @job.save
       # Queue Sidekiq job with token
       job_id = MigrationJob.perform_async(@job.id, session[:gitlab_token], session[:gitlab_endpoint])
@@ -72,8 +77,34 @@ class JobsController < ApplicationController
       @job.update(sidekiq_job_id: job_id, status: 'pending')
       
       redirect_to @job, notice: "마이그레이션이 마지막 체크포인트에서 재개되었습니다."
+    elsif @job.repository_config_changed?
+      redirect_to @job, alert: "Repository 설정이 변경되어 재개할 수 없습니다. Retry를 사용하여 새로 시작하세요."
     else
       redirect_to @job, alert: "이 작업은 재개할 수 없습니다."
+    end
+  end
+  
+  # Retry 액션 추가 (Resume과 달리 처음부터 다시 시작)
+  def retry
+    if @job.failed? || @job.cancelled?
+      # 새 Job 생성 (완전히 새로운 시작)
+      new_job_params = build_job_parameters.merge(
+        repository_id: @repository.id,
+        job_type: @job.job_type
+      )
+      
+      new_job = Job.create!(new_job_params)
+      
+      # 새 Sidekiq job 시작
+      job_id = MigrationJob.perform_async(new_job.id, session[:gitlab_token], session[:gitlab_endpoint])
+      new_job.update(sidekiq_job_id: job_id)
+      
+      # 원래 Job에 재시도 정보 기록
+      @job.append_output("새 Job ##{new_job.id}으로 재시도됨")
+      
+      redirect_to new_job, notice: "새로운 Job으로 마이그레이션을 처음부터 다시 시작합니다."
+    else
+      redirect_to @job, alert: "이 작업은 다시 시작할 수 없습니다."
     end
   end
   
@@ -130,8 +161,6 @@ class JobsController < ApplicationController
       repository_id: @repository.id,
       migration_type: @repository.migration_type,
       preserve_history: @repository.preserve_history,
-      branch_strategy: @repository.branch_strategy,
-      tag_strategy: @repository.tag_strategy,
       started_by: current_gitlab_user&.dig(:email) || 'GitLab User'
     }
   end

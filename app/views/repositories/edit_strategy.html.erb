@@ -1,184 +1,2623 @@
 <div class="container mt-4">
   <div class="row">
-    <div class="col-md-12">
-      <h2>Migration Strategy for <%= @repository.name %></h2>
+    <div class="col-md-8 offset-md-2">
+      <h2>마이그레이션 전략 설정 - <%= @repository.name %></h2>
       
       <%= form_with(model: @repository, url: update_strategy_repository_path(@repository), method: :patch, local: true) do |form| %>
-        <div class="row">
-          <div class="col-md-6">
-            <div class="card mb-4">
-              <div class="card-header">
-                <h5 class="mb-0">Basic Settings</h5>
-              </div>
-              <div class="card-body">
-                <div class="mb-3">
-                  <%= form.label :migration_method, "Migration Method", class: "form-label" %>
-                  <%= form.select :migration_method, 
-                      options_for_select({ 
-                        'Simple (Fast, No History)' => 'simple', 
-                        'Git-SVN (Full History)' => 'git-svn' 
-                      }, @repository.migration_method),
-                      {}, class: "form-select" %>
-                  <div class="form-text">
-                    Choose between fast migration (no history) or full history preservation
-                  </div>
-                </div>
-                
-                <div class="mb-3">
-                  <%= form.label :migration_type, class: "form-label" %>
-                  <%= form.select :migration_type, 
-                      options_for_select(Repositories::MigrationStrategyService::MIGRATION_TYPES.invert, @repository.migration_type),
-                      {}, class: "form-select" %>
-                  <div class="form-text">
-                    Choose migration speed vs. completeness trade-off
-                  </div>
-                </div>
-                
-                <div class="mb-3">
-                  <div class="form-check">
-                    <%= form.check_box :preserve_history, class: "form-check-input" %>
-                    <%= form.label :preserve_history, "Preserve full commit history", class: "form-check-label" %>
-                  </div>
-                  <div class="form-text">
-                    Uncheck for faster migration with limited history
-                  </div>
-                </div>
-                
-                <div class="mb-3">
-                  <%= form.label :commit_message_prefix, class: "form-label" %>
-                  <%= form.text_field :commit_message_prefix, class: "form-control", 
-                      placeholder: "[SVN-MIGRATION]" %>
-                  <div class="form-text">
-                    Optional prefix for all migrated commits
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div class="card mb-4">
-              <div class="card-header">
-                <h5 class="mb-0">Branch & Tag Strategy</h5>
-              </div>
-              <div class="card-body">
-                <div class="mb-3">
-                  <%= form.label :branch_strategy, class: "form-label" %>
-                  <%= form.select :branch_strategy, 
-                      options_for_select(Repositories::MigrationStrategyService::BRANCH_STRATEGIES.invert, @repository.branch_strategy),
-                      {}, class: "form-select" %>
-                </div>
-                
-                <div class="mb-3">
-                  <%= form.label :tag_strategy, class: "form-label" %>
-                  <%= form.select :tag_strategy, 
-                      options_for_select(Repositories::MigrationStrategyService::TAG_STRATEGIES.invert, @repository.tag_strategy),
-                      {}, class: "form-select" %>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="col-md-6">
-            <div class="card mb-4">
-              <div class="card-header">
-                <h5 class="mb-0">Large File Handling</h5>
-              </div>
-              <div class="card-body">
-                <div class="mb-3">
-                  <%= form.label :large_file_handling, "Strategy", class: "form-label" %>
-                  <%= form.select :large_file_handling, 
-                      options_for_select(Repositories::MigrationStrategyService::LARGE_FILE_STRATEGIES.invert, @repository.large_file_handling),
-                      {}, class: "form-select" %>
-                  <div class="form-text">
-                    How to handle files exceeding the size limit
-                  </div>
-                </div>
-                
-                <div class="mb-3">
-                  <%= form.label :max_file_size_mb, "Max file size (MB)", class: "form-label" %>
-                  <%= form.number_field :max_file_size_mb, class: "form-control", 
-                      min: 1, max: 1000 %>
-                  <div class="form-text">
-                    Files larger than this will be handled according to the strategy above
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div class="card mb-4">
-              <div class="card-header">
-                <h5 class="mb-0">Authors Mapping</h5>
-              </div>
-              <div class="card-body">
-                <div class="mb-3">
-                  <%= form.label :authors_mapping, class: "form-label" %>
-                  <%= form.text_area :authors_mapping, class: "form-control font-monospace", 
-                      rows: 6, placeholder: "svnuser1 = Git User 1 <user1@example.com>\nsvnuser2 = Git User 2 <user2@example.com>" %>
-                  <div class="form-text">
-                    Map SVN usernames to Git author format (one per line)
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div class="card mb-4">
-              <div class="card-header">
-                <h5 class="mb-0">Ignore Patterns</h5>
-              </div>
-              <div class="card-body">
-                <div class="mb-3">
-                  <%= form.label :ignore_patterns, class: "form-label" %>
-                  <%= form.text_area :ignore_patterns, class: "form-control font-monospace", 
-                      rows: 6, placeholder: "*.log\n*.tmp\nbuild/\nnode_modules/" %>
-                  <div class="form-text">
-                    Files/directories to exclude (one pattern per line, gitignore syntax)
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
         
-        <% if @strategy_service.validate_strategy.any? %>
-          <div class="alert alert-danger">
-            <h6>Strategy validation errors:</h6>
-            <ul class="mb-0">
-              <% @strategy_service.validate_strategy.each do |error| %>
-                <li><%= error %></li>
-              <% end %>
-            </ul>
-          </div>
-        <% end %>
-        
+        <!-- 마이그레이션 방법 선택 -->
         <div class="card mb-4">
           <div class="card-header">
-            <h5 class="mb-0">Migration Summary</h5>
+            <h5 class="mb-0">마이그레이션 방법</h5>
           </div>
           <div class="card-body">
-            <% summary = @strategy_service.migration_summary %>
-            <dl class="row">
-              <dt class="col-sm-3">Migration Type:</dt>
-              <dd class="col-sm-9"><%= summary[:type] %></dd>
-              
-              <dt class="col-sm-3">Preserve History:</dt>
-              <dd class="col-sm-9"><%= summary[:preserve_history] ? "Yes" : "No" %></dd>
-              
-              <dt class="col-sm-3">Branch Strategy:</dt>
-              <dd class="col-sm-9"><%= summary[:branch_strategy] %></dd>
-              
-              <dt class="col-sm-3">Tag Strategy:</dt>
-              <dd class="col-sm-9"><%= summary[:tag_strategy] %></dd>
-              
-              <dt class="col-sm-3">Estimated Time:</dt>
-              <dd class="col-sm-9"><%= summary[:estimated_time_minutes] %> minutes</dd>
-            </dl>
+            <div class="mb-3">
+              <%= form.label :migration_method, "방법 선택", class: "form-label" %>
+              <%= form.select :migration_method, 
+                  options_for_select({ 
+                    'Simple Mode (빠른 마이그레이션, 최근 10개 커밋만)' => 'simple', 
+                    'Full Mode (전체 히스토리 보존, git-svn)' => 'git-svn' 
+                  }, @repository.migration_method),
+                  {}, class: "form-select", id: "migration-method-select" %>
+            </div>
+            
+            <!-- Migration Method Details -->
+            <div class="alert alert-info mt-2" id="simple-method-info" style="<%= @repository.migration_method == 'simple' ? '' : 'display: none;' %>">
+              <h6 class="alert-heading">
+                <i class="bi bi-lightning-fill"></i> Simple Mode
+              </h6>
+              <ul class="mb-0">
+                <li>빠른 마이그레이션 (최근 10개 리비전만)</li>
+                <li>최소한의 커밋 히스토리</li>
+                <li><strong class="text-danger">⚠️ 증분 동기화 지원 안함</strong></li>
+                <li>적합한 경우: 일회성 마이그레이션, POC</li>
+              </ul>
+            </div>
+            
+            <div class="alert alert-success mt-2" id="gitsvn-method-info" style="<%= @repository.migration_method == 'git-svn' ? '' : 'display: none;' %>">
+              <h6 class="alert-heading">
+                <i class="bi bi-clock-history"></i> Full History Mode
+              </h6>
+              <ul class="mb-0">
+                <li>전체 커밋 히스토리 보존</li>
+                <li>모든 브랜치와 태그 포함</li>
+                <li><strong class="text-success">✅ 수동 증분 동기화 지원</strong></li>
+                <li>적합한 경우: 프로덕션 마이그레이션, 지속적 동기화 필요</li>
+              </ul>
+              <div class="mt-2 text-muted small">
+                <i class="bi bi-info-circle"></i> Full Mode로 마이그레이션하면 이후 언제든지 SVN의 새로운 커밋을 수동으로 동기화할 수 있습니다.
+              </div>
+            </div>
           </div>
         </div>
         
+        <!-- 파일 제외 설정 -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0">파일 제외 패턴 설정</h5>
+          </div>
+          <div class="card-body">
+            
+            <!-- 템플릿 선택 -->
+            <div class="mb-3">
+              <label class="form-label">빠른 템플릿 선택</label>
+              
+              <!-- 언어 선택 -->
+              <select class="form-select form-select-sm mb-2" id="template-category">
+                <option value="">언어 선택...</option>
+                <option value="java">Java</option>
+                <option value="cpp">C/C++</option>
+                <option value="csharp">C#/.NET</option>
+                <option value="python">Python</option>
+                <option value="javascript">JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="ruby">Ruby</option>
+                <option value="go">Go</option>
+                <option value="rust">Rust</option>
+                <option value="php">PHP</option>
+                <option value="swift">Swift</option>
+                <option value="objc">Objective-C</option>
+                <option value="kotlin">Kotlin</option>
+                <option value="dart">Dart</option>
+                <option value="scala">Scala</option>
+                <option value="general">일반 (언어 무관)</option>
+              </select>
+              
+              <!-- 선택된 카테고리의 템플릿 버튼들 -->
+              <div id="template-buttons" class="d-none">
+                <div class="p-2 border rounded bg-light">
+                  <div id="template-buttons-container">
+                    <!-- 동적으로 버튼이 추가됩니다 -->
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 액션 버튼들 -->
+              <div class="mt-2">
+                <button type="button" class="btn btn-sm btn-outline-danger me-1" data-template="clear">
+                  <i class="bi bi-eraser"></i> 지우기
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-template="append" id="append-mode">
+                  <i class="bi bi-plus-circle"></i> 추가 모드 OFF
+                </button>
+              </div>
+            </div>
+            
+            <div class="mb-3">
+              <%= form.label :ignore_patterns, "제외할 파일 패턴", class: "form-label" %>
+              <%= form.text_area :ignore_patterns, 
+                  class: "form-control font-monospace", 
+                  rows: 12,
+                  id: "ignore-patterns-textarea",
+                  placeholder: "# 파일 패턴을 입력하거나 위 템플릿을 선택하세요",
+                  value: @repository.ignore_patterns || "# === 일반 설정 ===\n# OS 파일\n.DS_Store\nThumbs.db\n\n# 임시 파일\n*.tmp\n*.bak\n*.swp\n*~\n\n# 문서 파일\n*.doc\n*.docx\n*.pdf\n*.xls\n*.xlsx\n\n# IDE 설정\n.idea/\n*.iml\n.vscode/\n.project\n.classpath\n.settings/" %>
+              <div class="form-text">
+                <i class="bi bi-exclamation-triangle text-warning"></i> <strong>이 패턴의 파일들은 Git 히스토리에서 완전히 제외됩니다.</strong><br>
+                <span class="text-muted">예: *.doc은 모든 Word 문서 제외, build/는 build 디렉토리 전체 제외</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- .gitignore 파일 생성 옵션 -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0">.gitignore 파일 생성</h5>
+          </div>
+          <div class="card-body">
+            <div class="form-check">
+              <%= form.check_box :generate_gitignore, { checked: @repository.generate_gitignore == true }, { class: "form-check-input", id: "generate-gitignore-check" } %>
+              <%= form.label :generate_gitignore, ".gitignore 파일 자동 생성", class: "form-check-label", for: "generate-gitignore-check" %>
+              <div class="form-text mt-2">
+                <i class="bi bi-info-circle"></i> 체크하면 마이그레이션 완료 후 위에서 설정한 제외 패턴을 .gitignore 파일로 자동 생성합니다.<br>
+                <span class="text-muted">• 체크 시: 히스토리에서 제외 + .gitignore 파일 생성</span><br>
+                <span class="text-muted">• 체크 해제 시: 히스토리에서만 제외 (.gitignore 파일 생성하지 않음)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        
+        <!-- 제출 버튼 -->
         <div class="d-flex justify-content-between">
-          <%= form.submit "Save Strategy", class: "btn btn-primary" %>
-          <%= link_to "Cancel", @repository, class: "btn btn-secondary" %>
+          <%= form.submit "전략 저장", class: "btn btn-primary btn-lg" %>
+          <%= link_to "취소", @repository, class: "btn btn-secondary btn-lg" %>
         </div>
       <% end %>
     </div>
   </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const methodSelect = document.getElementById('migration-method-select');
+  const simpleInfo = document.getElementById('simple-method-info');
+  const gitsvnInfo = document.getElementById('gitsvn-method-info');
+  
+  if (methodSelect) {
+    methodSelect.addEventListener('change', function() {
+      if (this.value === 'simple') {
+        simpleInfo.style.display = 'block';
+        gitsvnInfo.style.display = 'none';
+      } else if (this.value === 'git-svn') {
+        simpleInfo.style.display = 'none';
+        gitsvnInfo.style.display = 'block';
+      }
+    });
+  }
+  
+  // 언어별 템플릿 버튼 정의 (관련 프레임워크/도구 포함)
+  const templateCategories = {
+    java: [
+      { id: 'java-general', name: 'Java 기본', icon: 'bi-cup-hot' },
+      { id: 'java-gradle', name: 'Gradle', icon: 'bi-box-seam' },
+      { id: 'java-maven', name: 'Maven', icon: 'bi-box-seam' },
+      { id: 'spring', name: 'Spring', icon: 'bi-flower1' },
+      { id: 'android', name: 'Android', icon: 'bi-phone' },
+      { id: 'android-gradle', name: 'Android+Gradle', icon: 'bi-phone-fill' }
+    ],
+    cpp: [
+      { id: 'cpp-general', name: 'C/C++ 기본', icon: 'bi-code-slash' },
+      { id: 'c-make', name: 'Makefile', icon: 'bi-gear' },
+      { id: 'c-cmake', name: 'CMake', icon: 'bi-gear-fill' },
+      { id: 'visual-studio', name: 'Visual Studio', icon: 'bi-windows' }
+    ],
+    csharp: [
+      { id: 'dotnet-core', name: '.NET Core', icon: 'bi-dot' },
+      { id: 'dotnet-vs', name: 'Visual Studio', icon: 'bi-windows' },
+      { id: 'dotnet-unity', name: 'Unity', icon: 'bi-controller' },
+      { id: 'xamarin', name: 'Xamarin', icon: 'bi-phone' }
+    ],
+    python: [
+      { id: 'python', name: 'Python 기본', icon: 'bi-filetype-py' },
+      { id: 'python-django', name: 'Django', icon: 'bi-server' },
+      { id: 'python-flask', name: 'Flask', icon: 'bi-flask' },
+      { id: 'jupyter', name: 'Jupyter', icon: 'bi-journal-code' },
+      { id: 'scrapy', name: 'Scrapy', icon: 'bi-bug' }
+    ],
+    javascript: [
+      { id: 'node', name: 'Node.js', icon: 'bi-filetype-js' },
+      { id: 'react', name: 'React', icon: 'bi-arrow-repeat' },
+      { id: 'vue', name: 'Vue.js', icon: 'bi-triangle' },
+      { id: 'angular', name: 'Angular', icon: 'bi-shield' },
+      { id: 'nextjs', name: 'Next.js', icon: 'bi-chevron-right' },
+      { id: 'express', name: 'Express', icon: 'bi-speedometer' }
+    ],
+    typescript: [
+      { id: 'typescript', name: 'TypeScript 기본', icon: 'bi-filetype-tsx' },
+      { id: 'react', name: 'React+TS', icon: 'bi-arrow-repeat' },
+      { id: 'angular', name: 'Angular', icon: 'bi-shield' },
+      { id: 'nestjs', name: 'NestJS', icon: 'bi-hexagon' }
+    ],
+    ruby: [
+      { id: 'ruby', name: 'Ruby 기본', icon: 'bi-gem' },
+      { id: 'rails', name: 'Rails', icon: 'bi-train-front' },
+      { id: 'sinatra', name: 'Sinatra', icon: 'bi-music-note' }
+    ],
+    go: [
+      { id: 'go', name: 'Go 기본', icon: 'bi-chevron-double-right' },
+      { id: 'gin', name: 'Gin', icon: 'bi-cup' },
+      { id: 'echo', name: 'Echo', icon: 'bi-megaphone' }
+    ],
+    rust: [
+      { id: 'rust', name: 'Rust 기본', icon: 'bi-gear-wide' },
+      { id: 'cargo', name: 'Cargo', icon: 'bi-box' }
+    ],
+    php: [
+      { id: 'php', name: 'PHP 기본', icon: 'bi-filetype-php' },
+      { id: 'laravel', name: 'Laravel', icon: 'bi-code-square' },
+      { id: 'symfony', name: 'Symfony', icon: 'bi-puzzle' },
+      { id: 'wordpress', name: 'WordPress', icon: 'bi-wordpress' }
+    ],
+    swift: [
+      { id: 'swift', name: 'Swift 기본', icon: 'bi-apple' },
+      { id: 'ios-swift', name: 'iOS App', icon: 'bi-phone' },
+      { id: 'xcode', name: 'Xcode', icon: 'bi-hammer' },
+      { id: 'swiftpm', name: 'Swift Package', icon: 'bi-box' }
+    ],
+    objc: [
+      { id: 'objc', name: 'Objective-C 기본', icon: 'bi-apple' },
+      { id: 'ios-objc', name: 'iOS App', icon: 'bi-phone' },
+      { id: 'xcode', name: 'Xcode', icon: 'bi-hammer' },
+      { id: 'cocoapods', name: 'CocoaPods', icon: 'bi-box' }
+    ],
+    kotlin: [
+      { id: 'kotlin', name: 'Kotlin 기본', icon: 'bi-code' },
+      { id: 'android', name: 'Android', icon: 'bi-phone' },
+      { id: 'ktor', name: 'Ktor', icon: 'bi-server' }
+    ],
+    dart: [
+      { id: 'dart', name: 'Dart 기본', icon: 'bi-chevron-right' },
+      { id: 'flutter', name: 'Flutter', icon: 'bi-phone-landscape' }
+    ],
+    scala: [
+      { id: 'scala', name: 'Scala 기본', icon: 'bi-braces' },
+      { id: 'sbt', name: 'SBT', icon: 'bi-box' },
+      { id: 'play', name: 'Play Framework', icon: 'bi-play-circle' }
+    ],
+    general: [
+      { id: 'general', name: '일반', icon: 'bi-file-earmark' }
+    ]
+  };
+  
+  // Gitignore 템플릿 내용
+  const templates = {
+    'java-gradle': `# === Java Gradle ===
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+target/
+out/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.settings/
+.project
+.classpath
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'java-maven': `# === Java Maven ===
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+
+# IDE
+.idea/
+*.iml
+.settings/
+.project
+.classpath
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'java-general': `# === Java General ===
+# Compiled class files
+*.class
+
+# Package files
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# IDE
+.idea/
+*.iml
+.settings/
+.project
+.classpath
+.vscode/
+
+# Build
+target/
+build/
+out/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'c-make': `# === C/C++ Make ===
+# Prerequisites
+*.d
+
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+
+# Shared objects
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# Build
+build/
+bin/
+obj/
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'c-cmake': `# === C/C++ CMake ===
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+cmake-build-*/
+
+# Prerequisites
+*.d
+
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+
+# Shared objects
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Build
+build/
+bin/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.cbp
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'cpp-general': `# === C++ General ===
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Build
+build/
+bin/
+obj/
+Debug/
+Release/
+
+# IDE
+.idea/
+.vscode/
+*.sln
+*.vcxproj*
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'dotnet-vs': `# === Visual Studio / .NET ===
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache/options
+.vs/
+.vscode/
+
+# MSTest
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Files built by Visual Studio
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.ipch
+*.pdb
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*_i.c
+*_p.c
+*_h.h
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.pdb
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'dotnet-core': `# === .NET Core ===
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+*.binlog
+
+# NuGet
+*.nupkg
+*.snupkg
+
+# Visual Studio Code
+.vscode/
+
+# Rider
+.idea/
+*.sln.iml
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'dotnet-unity': `# === Unity ===
+# Unity folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+
+# MemoryCaptures
+[Mm]emoryCaptures/
+
+# Asset meta data
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Unity3D generated file on crash reports
+sysinfo.txt
+
+# Builds
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Crashlytics
+crashlytics-build.properties
+
+# Visual Studio cache
+.vs/
+
+# Gradle cache
+.gradle/
+
+# Autogenerated VS/MD/Consulo solution and project files
+ExportedObj/
+.consulo/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'python': `# === Python ===
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+media
+
+# Flask
+instance/
+.webassets-cache
+
+# Scrapy
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'node': `# === Node.js ===
+# Dependencies
+node_modules/
+jspm_packages/
+
+# Build
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+*.lcov
+.nyc_output
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# TypeScript
+*.tsbuildinfo
+
+# Optional npm cache
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Yarn
+.yarn-integrity
+
+# dotenv
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'ruby': `# === Ruby ===
+# Bundler
+*.gem
+*.rbc
+/.config
+/coverage/
+/InstalledFiles
+/pkg/
+/spec/reports/
+/spec/examples.txt
+/test/tmp/
+/test/version_tmp/
+/tmp/
+
+# Bundler
+.bundle/
+vendor/bundle
+lib/bundler/man/
+
+# Rails
+*.sqlite3
+*.sqlite3-journal
+*.log
+/db/*.sqlite3
+/db/*.sqlite3-journal
+/public/system
+/coverage/
+/spec/tmp
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+
+# Byebug
+.byebug_history
+
+# Spring
+/spring/*.pid
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# dotenv
+.env
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'general': `# === 일반 설정 ===
+# OS 파일
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 임시 파일
+*.tmp
+*.temp
+*.bak
+*.backup
+*.swp
+*.swo
+*~
+.#*
+
+# 문서 파일
+*.doc
+*.docx
+*.pdf
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+
+# 압축 파일
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# 로그 파일
+*.log
+logs/
+
+# IDE 설정
+.idea/
+.vscode/
+*.iml
+.project
+.classpath
+.settings/
+*.sublime-*
+
+# 빌드 산출물
+build/
+dist/
+out/
+target/
+bin/
+obj/`,
+
+    'android': `# === Android ===
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+release/
+
+# Gradle files
+.gradle/
+build/
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Proguard folder generated by Eclipse
+proguard/
+
+# Log Files
+*.log
+
+# Android Studio Navigation editor temp files
+.navigation/
+
+# Android Studio captures folder
+captures/
+
+# IntelliJ
+*.iml
+.idea/
+
+# Android Studio 3.1+ serialized cache file
+.caches/build_file_checksums.ser`,
+
+    'ios-swift': `# === iOS/Swift ===
+# Xcode
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace
+
+# Swift Package Manager
+.build/
+Packages/
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Code Injection
+iOSInjectionProject/`,
+
+    'android-gradle': `# === Android Gradle ===
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+release/
+
+# Gradle files
+.gradle/
+build/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Proguard folder generated by Eclipse
+proguard/
+
+# Log Files
+*.log
+
+# Android Studio
+*.iml
+.idea/
+.navigation/
+captures/
+.externalNativeBuild
+.cxx/
+
+# NDK
+obj/
+.externalNativeBuild/`,
+
+    'ios-objc': `# === iOS/Objective-C ===
+# Xcode
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+
+# CocoaPods
+Pods/
+*.xcworkspace
+
+# Carthage
+Carthage/Build`,
+
+    'xcode': `# === Xcode ===
+# Xcode
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+IDEWorkspaceChecks.plist`,
+
+    'react': `# === React ===
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Production
+/build
+
+# Misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo`,
+
+    'vue': `# === Vue.js ===
+.DS_Store
+node_modules/
+/dist/
+
+# local env files
+.env.local
+.env.*.local
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?`,
+
+    'rails': `# === Ruby on Rails ===
+*.rbc
+capybara-*.html
+.rspec
+/db/*.sqlite3
+/db/*.sqlite3-journal
+/db/*.sqlite3-[0-9]*
+/public/system
+/coverage/
+/spec/tmp
+*.orig
+rerun.txt
+pickle-email-*.html
+
+# Ignore all logfiles and tempfiles.
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+
+# Ignore pidfiles, but keep the directory.
+/tmp/pids/*
+!/tmp/pids/
+!/tmp/pids/.keep
+
+# Ignore uploaded files in development.
+/storage/*
+!/storage/.keep
+
+/public/assets
+.byebug_history
+
+# Ignore master key for decrypting credentials and more.
+/config/master.key
+
+/public/packs
+/public/packs-test
+/node_modules
+/yarn-error.log
+yarn-debug.log*
+.yarn-integrity`,
+
+    'python-django': `# === Django ===
+*.log
+*.pot
+*.pyc
+__pycache__/
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media
+
+# If your build process includes running collectstatic, then you probably don't need or want to include staticfiles/
+# in your Git repository. Update and uncomment the following line accordingly.
+# <django-project-name>/staticfiles/
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/`,
+
+    'objc': `# === Objective-C ===
+# Xcode
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+
+# CocoaPods
+Pods/
+*.xcworkspace
+
+# Carthage
+Carthage/Build
+
+# Objective-C/Swift specific
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM`,
+
+    'go': `# === Go ===
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with go test -c
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# Build directory
+bin/
+dist/`,
+
+    'rust': `# === Rust ===
+# Generated by Cargo
+# will have compiled files and executables
+debug/
+target/
+
+# Remove Cargo.lock from gitignore if creating an executable
+Cargo.lock
+
+# These are backup files generated by rustfmt
+**/*.rs.bk
+
+# MSVC Windows builds of rustc generate these
+*.pdb`,
+
+    'typescript': `# === TypeScript ===
+# Compiled JavaScript
+*.js
+*.js.map
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Build
+dist/
+build/
+out/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*`,
+
+    'php': `# === PHP ===
+# Composer
+vendor/
+composer.lock
+
+# PHPUnit
+.phpunit.result.cache
+
+# PHP-CS-Fixer
+.php_cs.cache
+.php-cs-fixer.cache
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db`,
+
+    'kotlin': `# === Kotlin ===
+# Compiled class files
+*.class
+
+# Log file
+*.log
+
+# BlueJ files
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files #
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# virtual machine crash logs
+hs_err_pid*
+
+# Gradle
+.gradle/
+build/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+out/
+
+# Android Studio
+*.apk
+*.aab`,
+
+    'swift': `# === Swift ===
+# Xcode
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+
+# Swift Package Manager
+.build/
+Packages/
+Package.pins
+Package.resolved
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output`,
+
+    'dart': `# === Dart ===
+# Files and directories created by pub
+.dart_tool/
+.packages
+build/
+pubspec.lock
+
+# Directory created by dartdoc
+doc/api/
+
+# Android related
+**/android/**/gradle-wrapper.jar
+**/android/.gradle
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+
+# iOS/XCode related
+**/ios/**/*.mode1v3
+**/ios/**/*.mode2v3
+**/ios/**/*.moved-aside
+**/ios/**/*.pbxuser
+**/ios/**/*.perspectivev3
+**/ios/**/*sync/
+**/ios/**/.sconsign.dblite
+**/ios/**/.tags*
+**/ios/**/.vagrant/
+**/ios/**/DerivedData/
+**/ios/**/Icon?
+**/ios/**/Pods/
+**/ios/**/.symlinks/
+**/ios/**/profile
+**/ios/**/xcuserdata
+**/ios/.generated/
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/app.flx
+**/ios/Flutter/app.zip
+**/ios/Flutter/flutter_assets/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*`,
+
+    'flutter': `# === Flutter ===
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+
+# Web related
+lib/generated_plugin_registrant.dart
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release`,
+
+    'scala': `# === Scala ===
+*.class
+*.log
+
+# sbt specific
+.cache/
+.history/
+.lib/
+dist/*
+target/
+lib_managed/
+src_managed/
+project/boot/
+project/plugins/project/
+.scala_dependencies
+.worksheet
+
+# IDE specific
+.idea/
+*.iml
+.vscode/
+
+# Metals
+.metals/
+.bloop/
+project/metals.sbt`,
+
+    'spring': `# === Spring Boot ===
+HELP.md
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+# Compiled class file
+*.class
+
+# Log file
+*.log
+
+# Package Files #
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar`,
+
+    'angular': `# === Angular ===
+# See http://help.github.com/ignore-files/ for more about ignoring files.
+
+# compiled output
+/dist
+/tmp
+/out-tsc
+# Only exists if Bazel was run
+/bazel-out
+
+# dependencies
+/node_modules
+
+# profiling files
+chrome-profiler-events*.json
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/*
+
+# misc
+/.angular/cache
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# System Files
+.DS_Store
+Thumbs.db`,
+
+    'nextjs': `# === Next.js ===
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts`,
+
+    'express': `# === Express.js ===
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Directory for instrumented libs generated by jscoverage/JSCover
+lib-cov
+
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons (https://nodejs.org/api/addons.html)
+build/Release
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+.env.test
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+out
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*`,
+
+    'python-flask': `# === Flask ===
+instance/
+.webassets-cache
+.env
+
+# Python
+*.py[cod]
+__pycache__/
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite`,
+
+    'visual-studio': `# === Visual Studio (C++) ===
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache files
+ipch/
+*.aps
+*.ncb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.opendb
+
+# Visual C++ cache files
+*.pch
+*.pdb
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*_i.c
+*_p.c
+*_h.h
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.pdb
+*.ipdb
+*.pgc
+*.pgd`,
+
+    'xamarin': `# === Xamarin ===
+# Xamarin
+*.userprefs
+*.usertasks
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio 2015 cache/options directory
+.vs/
+
+# MSTest test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+# Xamarin Components
+Components/
+
+# Android
+*.apk
+*.aab
+*.dex
+
+# iOS
+*.ipa
+*.dSYM.zip
+*.dSYM`,
+
+    'jupyter': `# === Jupyter Notebook ===
+# Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Jupyter specific
+*.nbconvert.ipynb
+.virtual_documents/`,
+
+    'scrapy': `# === Scrapy ===
+# Scrapy stuff:
+.scrapy
+
+# Scrapy cloud
+scrapinghub.yml
+
+# Python
+*.py[cod]
+__pycache__/
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+
+# Logs
+*.log
+scrapy.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+items.json
+items.jl
+*.csv
+export/`,
+
+    'nestjs': `# === NestJS ===
+# compiled output
+/dist
+/node_modules
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+
+# Tests
+/coverage
+/.nyc_output
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Environment
+.env
+.env.local
+.env.development
+.env.test
+.env.production`,
+
+    'sinatra': `# === Sinatra ===
+# Ruby
+*.gem
+*.rbc
+/.config
+/coverage/
+/InstalledFiles
+/pkg/
+/spec/reports/
+/spec/examples.txt
+/test/tmp/
+/test/version_tmp/
+/tmp/
+
+# Bundler
+/.bundle/
+/vendor/bundle
+/lib/bundler/man/
+
+# dotenv
+.env
+
+# Database
+*.sqlite3
+*.sqlite3-journal
+*.db
+
+# Logs
+*.log
+/log/*
+!/log/.keep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo`,
+
+    'gin': `# === Gin (Go) ===
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with go test -c
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# Environment files
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build
+bin/
+dist/
+build/
+
+# Logs
+*.log
+logs/`,
+
+    'echo': `# === Echo (Go) ===
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Build
+bin/
+dist/
+tmp/
+
+# Logs
+*.log
+logs/
+access.log
+error.log`,
+
+    'cargo': `# === Cargo (Rust) ===
+# Generated by Cargo
+# will have compiled files and executables
+debug/
+target/
+
+# Remove Cargo.lock from gitignore if creating an executable, leave it for libraries
+# More information here https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
+Cargo.lock
+
+# These are backup files generated by rustfmt
+**/*.rs.bk
+
+# MSVC Windows builds of rustc generate these
+*.pdb
+
+# RustRover
+.idea/
+
+# VS Code
+.vscode/`,
+
+    'laravel': `# === Laravel ===
+/vendor/
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Laravel 4 specific
+bootstrap/compiled.php
+app/storage/
+
+# Laravel 5 & Lumen specific
+public/storage
+public/hot
+
+# Laravel 5 & Lumen specific with changed public path
+public_html/storage
+public_html/hot
+
+storage/*.key
+.env
+Homestead.yaml
+Homestead.json
+/.vagrant
+.phpunit.result.cache
+
+# Laravel IDE helper
+_ide_helper.php
+_ide_helper_models.php
+.phpstorm.meta.php
+
+# Laravel Telescope
+telescope.json
+
+# Laravel Mix
+/public/js
+/public/css
+/public/mix-manifest.json`,
+
+    'symfony': `# === Symfony ===
+# Cache and logs
+/var/cache/*
+/var/log/*
+!var/cache/.gitkeep
+!var/log/.gitkeep
+
+# Environment files
+/.env.local
+/.env.local.php
+/.env.*.local
+
+# Composer
+/vendor/
+composer.phar
+
+# PHPUnit
+/phpunit.xml
+.phpunit.result.cache
+
+# Build data
+/build/
+
+# Backup files
+*.bak
+
+# IDE
+.idea/
+.vscode/
+
+# npm/yarn
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Symfony CLI
+/.symfony/`,
+
+    'wordpress': `# === WordPress ===
+# WordPress core files
+/wp-admin/
+/wp-includes/
+/wp-content/uploads/
+/wp-content/upgrade/
+/wp-content/backup-db/
+/wp-content/backups/
+/wp-content/blogs.dir/
+/wp-content/cache/
+/wp-content/upgrade/
+/wp-content/uploads/
+/wp-content/wp-cache-config.php
+/wp-content/plugins/hello.php
+
+# WordPress config
+wp-config.php
+wp-config-local.php
+
+# htaccess
+.htaccess
+
+# Log files
+*.log
+error_log
+access_log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/`,
+
+    'swiftpm': `# === Swift Package Manager ===
+# Xcode
+xcuserdata/
+*.xcodeproj
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.pins
+Package.resolved
+*.xcodeproj
+DerivedData/
+
+# CocoaPods (if used alongside SPM)
+Pods/
+
+# Carthage (if used alongside SPM)
+Carthage/Build/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Code Coverage
+*.xcresult
+*.lcov`,
+
+    'cocoapods': `# === CocoaPods ===
+# CocoaPods
+Pods/
+*.xcworkspace
+
+# Xcode
+build/
+DerivedData/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns`,
+
+    'ktor': `# === Ktor ===
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Kotlin
+*.class
+*.log
+
+# Application
+local.properties
+secrets.properties
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log`,
+
+    'sbt': `# === SBT (Scala) ===
+# sbt specific
+dist/*
+target/
+lib_managed/
+src_managed/
+project/boot/
+project/plugins/project/
+.history
+.cache
+.lib/
+
+# Scala-IDE specific
+.scala_dependencies
+.worksheet
+.sc
+
+# IntelliJ
+.idea/
+*.iml
+out/
+
+# Metals
+.metals/
+.bloop/
+project/metals.sbt
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store`,
+
+    'play': `# === Play Framework ===
+# Play Framework
+logs/
+target/
+/.idea
+/.idea_modules
+/.classpath
+/.project
+/.settings
+/RUNNING_PID
+
+# sbt specific
+dist/*
+lib_managed/
+src_managed/
+project/boot/
+project/plugins/project/
+.history
+.cache
+.lib/
+
+# Scala-IDE specific
+.scala_dependencies
+.worksheet
+
+# Eclipse specific
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+
+# Database
+*.db
+*.sqlite`
+  };
+  
+  const textarea = document.getElementById('ignore-patterns-textarea');
+  const appendModeBtn = document.getElementById('append-mode');
+  const categorySelect = document.getElementById('template-category');
+  const templateButtonsDiv = document.getElementById('template-buttons');
+  const templateButtonsContainer = document.getElementById('template-buttons-container');
+  let appendMode = false;
+  
+  // 추가 모드 토글
+  if (appendModeBtn) {
+    appendModeBtn.addEventListener('click', function() {
+      appendMode = !appendMode;
+      this.classList.toggle('btn-outline-secondary');
+      this.classList.toggle('btn-success');
+      this.innerHTML = appendMode ? 
+        '<i class="bi bi-plus-circle-fill"></i> 추가 모드 ON' : 
+        '<i class="bi bi-plus-circle"></i> 추가 모드 OFF';
+    });
+  }
+  
+  // 카테고리 선택 이벤트
+  if (categorySelect) {
+    categorySelect.addEventListener('change', function() {
+      const category = this.value;
+      
+      if (!category) {
+        templateButtonsDiv.classList.add('d-none');
+        return;
+      }
+      
+      // 카테고리에 해당하는 버튼들 생성
+      const categoryTemplates = templateCategories[category] || [];
+      templateButtonsContainer.innerHTML = '';
+      
+      if (categoryTemplates.length === 0 && category === 'general') {
+        // 일반 템플릿은 바로 적용
+        applyTemplate('general');
+        templateButtonsDiv.classList.add('d-none');
+        return;
+      }
+      
+      categoryTemplates.forEach(template => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-sm btn-outline-primary me-1 mb-1';
+        button.dataset.template = template.id;
+        button.innerHTML = `<i class="bi ${template.icon}"></i> ${template.name}`;
+        
+        button.addEventListener('click', function() {
+          applyTemplate(template.id);
+          
+          // 버튼 하이라이트
+          if (!appendMode) {
+            templateButtonsContainer.querySelectorAll('button').forEach(btn => {
+              btn.classList.remove('btn-primary');
+              btn.classList.add('btn-outline-primary');
+            });
+            this.classList.remove('btn-outline-primary');
+            this.classList.add('btn-primary');
+          }
+        });
+        
+        templateButtonsContainer.appendChild(button);
+      });
+      
+      templateButtonsDiv.classList.remove('d-none');
+    });
+  }
+  
+  // 템플릿 적용 함수
+  function applyTemplate(templateId) {
+    if (templates[templateId]) {
+      if (appendMode && textarea.value.trim()) {
+        textarea.value = textarea.value.trim() + '\n\n' + templates[templateId];
+      } else {
+        textarea.value = templates[templateId];
+      }
+    }
+  }
+  
+  // 지우기 버튼 이벤트
+  const clearBtn = document.querySelector('[data-template="clear"]');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function() {
+      textarea.value = '';
+      // 선택된 카테고리 초기화
+      categorySelect.value = '';
+      templateButtonsDiv.classList.add('d-none');
+      // 모든 템플릿 버튼 비활성화
+      if (templateButtonsContainer) {
+        templateButtonsContainer.querySelectorAll('button').forEach(btn => {
+          btn.classList.remove('btn-primary');
+          btn.classList.add('btn-outline-primary');
+        });
+      }
+    });
+  }
+});
+</script>

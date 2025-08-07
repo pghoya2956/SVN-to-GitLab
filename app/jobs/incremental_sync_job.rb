@@ -69,7 +69,8 @@ class IncrementalSyncJob
     
     validate_git_svn_repository!
     
-    git_dir = @repository.local_git_path
+    # 최신 성공한 마이그레이션 Job의 디렉토리 사용
+    git_dir = get_latest_migration_directory
     
     Dir.chdir(git_dir) do
       # 1. 현재 상태 저장
@@ -87,11 +88,9 @@ class IncrementalSyncJob
   end
   
   def validate_git_svn_repository!
-    unless @repository.local_git_path.present?
-      raise "Local git path not configured. Please run migration first."
-    end
+    git_dir = get_latest_migration_directory
     
-    unless File.directory?(@repository.local_git_path)
+    unless git_dir && File.directory?(git_dir)
       # 디렉토리가 없으면 SVN에서 다시 clone
       @job.append_output("Local git repository not found. Re-cloning from SVN...")
       clone_from_svn
@@ -121,16 +120,9 @@ class IncrementalSyncJob
       cmd += ['--username', @repository.username]
     end
     
-    # SVN 구조에 따른 옵션 추가
-    if @repository.svn_structure.present?
-      structure = @repository.svn_structure
-      cmd << '--stdlayout' if structure['layout'] == 'standard'
-      cmd += ['--trunk', structure['trunk']] if structure['trunk'].present?
-      cmd += ['--branches', structure['branches']] if structure['branches'].present?
-      cmd += ['--tags', structure['tags']] if structure['tags'].present?
-    else
-      cmd << '--stdlayout'
-    end
+    # SVN 레이아웃 옵션 (단일 원천 사용)
+    layout_options = @repository.git_svn_layout_options
+    cmd += layout_options unless layout_options.empty?
     
     # authors 파일이 있으면 사용
     authors_file_path = Rails.root.join('tmp', 'authors', "repository_#{@repository.id}_authors.txt")
@@ -312,6 +304,24 @@ class IncrementalSyncJob
     local_tags = `git tag -l`.lines.count
     
     remote_tags > local_tags
+  end
+  
+  def get_latest_migration_directory
+    # 최신 성공한 마이그레이션 Job 찾기
+    last_migration = @repository.jobs
+                                .where(job_type: 'migration', status: 'completed')
+                                .order(completed_at: :desc)
+                                .first
+    
+    if last_migration && last_migration.checkpoint_data['git_path'].present?
+      # 해당 Job의 디렉토리 사용
+      path = last_migration.checkpoint_data['git_path']
+      @job.append_output("Using migration job ##{last_migration.id} directory: #{path}")
+      return path
+    end
+    
+    # Fallback: Repository의 local_git_path 사용
+    @repository.local_git_path
   end
   
 end

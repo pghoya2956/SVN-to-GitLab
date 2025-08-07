@@ -6,13 +6,6 @@
           <h4>Login with GitLab PAT</h4>
         </div>
         <div class="card-body">
-          <% if flash[:alert] %>
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-              <%= flash[:alert] %>
-              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-          <% end %>
-          
           <%= form_with url: login_path, local: true do |f| %>
             <div class="mb-3">
               <%= f.label :endpoint, "GitLab API Endpoint", class: "form-label" %>

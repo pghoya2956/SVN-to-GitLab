@@ -20,9 +20,14 @@
               <div class="mb-2">
                 <small class="text-muted d-block">인증</small>
                 <span class="badge bg-light text-dark">
-                  <i class="bi bi-shield-check me-1"></i><%= repository.auth_type.capitalize %>
-                  <% if repository.username.present? %>
-                    (<%= repository.username %>)
+                  <i class="bi bi-shield-check me-1"></i>
+                  <% if repository.auth_type == 'none' %>
+                    없음 (공개)
+                  <% else %>
+                    <%= repository.auth_type.capitalize %>
+                    <% if repository.username.present? %>
+                      (<%= repository.username %>)
+                    <% end %>
                   <% end %>
                 </span>
               </div>
@@ -43,20 +48,137 @@
             
             <div data-controller="svn-detector" class="info-compact">
               <div data-svn-detector-target="structureInfo">
-                <% if repository.svn_structure.present? %>
+                <% # URL 변경 감지를 위한 flash 메시지 체크
+                   url_changed = flash[:notice]&.include?("URL이 변경되었습니다") %>
+                <% if repository.svn_structure.present? && !url_changed %>
                   <div class="structure-summary">
-                    <span class="badge bg-<%= repository.svn_structure['layout'] == 'standard' ? 'success' : 'info' %> mb-2">
-                      <%= repository.svn_structure['layout'] == 'standard' ? '표준 레이아웃' : '커스텀 레이아웃' %>
+                    <% layout_type = repository.svn_structure['layout'] %>
+                    <% badge_class = case layout_type
+                         when 'standard' then 'success'
+                         when 'partial_standard' then 'warning'
+                         when 'non_standard' then 'danger'
+                         else 'info'
+                       end %>
+                    <% layout_label = case layout_type
+                         when 'standard' then '표준 레이아웃'
+                         when 'partial_standard' then '부분 표준'
+                         when 'non_standard' then '비표준 레이아웃'
+                         else '알 수 없음'
+                       end %>
+                    <span class="badge bg-<%= badge_class %> mb-2">
+                      <%= layout_label %>
                     </span>
                     <div class="small text-muted">
-                      trunk: <%= repository.trunk_path || "없음" %><br>
-                      branches: <%= repository.branches_path || "없음" %><br>
-                      tags: <%= repository.tags_path || "없음" %>
+                      <% # SVN 구조에서 감지된 경로 표시
+                         svn_struct = repository.svn_structure
+                         detected_trunk = svn_struct['detected_trunk'] || svn_struct['trunk_path']
+                         detected_branches = svn_struct['detected_branches'] || svn_struct['branches_path']
+                         detected_tags = svn_struct['detected_tags'] || svn_struct['tags_path']
+                      %>
+                      <% if layout_type == 'partial_standard' %>
+                        <div class="mb-2">
+                          <strong>감지된 표준 구조:</strong><br>
+                          <span class="<%= detected_trunk ? 'text-success' : 'text-danger' %>">
+                            trunk: <%= detected_trunk || "❌ 없음" %>
+                          </span><br>
+                          <span class="<%= detected_branches ? 'text-success' : 'text-danger' %>">
+                            branches: <%= detected_branches || "❌ 없음" %>
+                          </span><br>
+                          <span class="<%= detected_tags ? 'text-success' : 'text-danger' %>">
+                            tags: <%= detected_tags || "❌ 없음" %>
+                          </span>
+                        </div>
+                        
+                        <% if svn_struct['root_entries'].present? %>
+                          <div class="alert alert-light p-2 mb-2">
+                            <small>
+                              <strong>루트 디렉토리:</strong><br>
+                              <code><%= svn_struct['root_entries'].first(10).join(', ') %><%= '...' if svn_struct['root_entries'].size > 10 %></code>
+                            </small>
+                          </div>
+                        <% end %>
+                        
+                        <% if svn_struct['alternative_trunk'] || svn_struct['alternative_branches'] || svn_struct['alternative_tags'] %>
+                          <div class="alert alert-info p-2 mb-2">
+                            <small>
+                              <i class="bi bi-lightbulb me-1"></i>
+                              <strong>추천 대체 경로:</strong><br>
+                              <%= "trunk → #{svn_struct['alternative_trunk']}" if svn_struct['alternative_trunk'] %><br>
+                              <%= "branches → #{svn_struct['alternative_branches']}" if svn_struct['alternative_branches'] %><br>
+                              <%= "tags → #{svn_struct['alternative_tags']}" if svn_struct['alternative_tags'] %>
+                            </small>
+                          </div>
+                        <% end %>
+                      <% elsif layout_type == 'non_standard' %>
+                        <% if svn_struct['root_entries'].present? %>
+                          <div class="mb-2">
+                            <strong>루트 디렉토리:</strong><br>
+                            <%= svn_struct['root_entries'].first(5).join(', ') %>
+                            <%= '...' if svn_struct['root_entries'].size > 5 %>
+                          </div>
+                        <% end %>
+                      <% else %>
+                        <div class="mb-2">
+                          <strong>표준 레이아웃 확인:</strong><br>
+                          <span class="text-success">✓ trunk</span><br>
+                          <span class="text-success">✓ branches</span><br>
+                          <span class="text-success">✓ tags</span>
+                        </div>
+                        <% if svn_struct['root_entries'].present? && svn_struct['root_entries'].size > 3 %>
+                          <div class="alert alert-light p-2 mb-2">
+                            <small>
+                              <strong>추가 디렉토리:</strong><br>
+                              <code><%= (svn_struct['root_entries'] - ['trunk/', 'branches/', 'tags/']).first(5).join(', ') %></code>
+                            </small>
+                          </div>
+                        <% end %>
+                      <% end %>
+                      
+                      <% if repository.total_revisions.present? %>
+                        <div class="mt-2 p-2 bg-light rounded">
+                          <small class="text-muted">
+                            <i class="bi bi-info-circle me-1"></i>
+                            총 리비전: <strong><%= repository.total_revisions %></strong>
+                          </small>
+                        </div>
+                      <% end %>
+                    </div>
+                    
+                    <div class="d-flex gap-2 mt-2">
+                      <button type="button"
+                          class="btn btn-sm btn-outline-primary"
+                          data-svn-detector-target="button"
+                          data-action="click->svn-detector#detect"
+                          data-url="<%= detect_structure_repository_path(repository) %>"
+                          data-repository-id="<%= repository.id %>">
+                        <span class="spinner-border spinner-border-sm d-none me-1" 
+                              role="status" 
+                              data-svn-detector-target="spinner"></span>
+                        <span data-svn-detector-target="buttonText">
+                          <i class="bi bi-arrow-clockwise me-1"></i>다시 감지
+                        </span>
+                      </button>
+                      
+                      <% if layout_type == 'non_standard' || layout_type == 'partial_standard' %>
+                        <%= link_to edit_layout_repository_path(repository), class: "btn btn-sm btn-warning" do %>
+                          <i class="bi bi-exclamation-triangle me-1"></i>경로 설정
+                        <% end %>
+                      <% else %>
+                        <%= link_to edit_layout_repository_path(repository), class: "btn btn-sm btn-outline-primary" do %>
+                          <i class="bi bi-pencil me-1"></i>수정
+                        <% end %>
+                      <% end %>
                     </div>
                   </div>
                 <% else %>
+                  <% if url_changed %>
+                    <div class="alert alert-warning p-2 mb-2">
+                      <i class="bi bi-exclamation-triangle me-1"></i>
+                      <small>URL이 변경되었습니다. 다시 감지해주세요.</small>
+                    </div>
+                  <% end %>
                   <button type="button"
-                      class="btn btn-primary btn-sm w-100"
+                      class="btn btn-<%= url_changed ? 'warning' : 'primary' %> btn-sm w-100"
                       data-svn-detector-target="button"
                       data-action="click->svn-detector#detect"
                       data-url="<%= detect_structure_repository_path(repository) %>"
@@ -64,8 +186,8 @@
                     <span class="spinner-border spinner-border-sm d-none me-1" 
                           role="status" 
                           data-svn-detector-target="spinner"></span>
-                    <i class="bi bi-search me-1"></i>
-                    <span data-svn-detector-target="buttonText">구조 감지하기</span>
+                    <i class="bi bi-<%= url_changed ? 'arrow-clockwise' : 'search' %> me-1"></i>
+                    <span data-svn-detector-target="buttonText"><%= url_changed ? '구조 다시 감지하기' : '구조 감지하기' %></span>
                   </button>
                   <small class="text-muted d-block mt-1">SVN 레이아웃을 자동으로 감지합니다</small>
                 <% end %>
@@ -96,8 +218,7 @@
                     <%= repository.migration_method == 'git-svn' ? '전체 이력 보존' : '최신 파일만' %>
                   </span>
                   <div class="small text-muted">
-                    타입: <%= repository.migration_type.humanize %><br>
-                    브랜치: <%= repository.branch_strategy&.humanize || "모든 브랜치" %>
+                    타입: <%= repository.migration_type.humanize %>
                   </div>
                   <%= link_to edit_strategy_repository_path(repository), class: "btn btn-sm btn-outline-primary mt-2" do %>
                     <i class="bi bi-pencil me-1"></i>수정
@@ -207,8 +328,8 @@
       </div>
     <% end %>
     
-    <!-- 추가 옵션 섹션 -->
-    <% if repository.enable_incremental_sync? %>
+    <!-- 증분 동기화 섹션 (Full Mode로 마이그레이션된 경우에만 표시) -->
+    <% if repository.migration_method == 'git-svn' && repository.initial_migration_completed? %>
       <div class="card shadow-sm mt-3">
         <div class="card-body">
           <div class="section-header d-flex align-items-center justify-content-between mb-3">
@@ -219,7 +340,7 @@
             <% if repository.gitlab_project_id.present? %>
               <%= link_to sync_repository_path(repository), 
                   method: :post,
-                  data: { "turbo-method": :post, "turbo-confirm": "지금 동기화를 시작하시겠습니까?" },
+                  data: { "turbo-method": :post, "turbo-confirm": "SVN의 새 커밋을 동기화하시겠습니까?" },
                   class: "btn btn-sm btn-warning" do %>
                 <i class="bi bi-arrow-repeat me-1"></i>지금 동기화
               <% end %>
@@ -228,15 +349,16 @@
           <div class="sync-status">
             <div class="row small">
               <div class="col-6">
-                <span class="text-muted">상태:</span>
-                <span class="badge bg-<%= repository.needs_sync? ? 'warning' : 'success' %> ms-2">
-                  <%= repository.needs_sync? ? '동기화 필요' : '최신 상태' %>
-                </span>
+                <span class="text-muted">마지막 동기화:</span>
+                <span class="ms-2"><%= repository.last_synced_at ? repository.last_synced_at.strftime("%m/%d %H:%M") : "초기 마이그레이션 이후 없음" %></span>
               </div>
               <div class="col-6">
-                <span class="text-muted">마지막 동기화:</span>
-                <span class="ms-2"><%= repository.last_synced_at ? repository.last_synced_at.strftime("%m/%d %H:%M") : "없음" %></span>
+                <span class="text-muted">마지막 리비전:</span>
+                <span class="ms-2"><%= repository.last_synced_revision || "N/A" %></span>
               </div>
+            </div>
+            <div class="mt-2 text-muted small">
+              <i class="bi bi-info-circle"></i> SVN의 새로운 커밋을 Git으로 가져옵니다
             </div>
           </div>
         </div>
