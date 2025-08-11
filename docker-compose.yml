@@ -73,6 +73,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       RAILS_MASTER_KEY: ${RAILS_MASTER_KEY}
       SVN_BATCH_SIZE: 50
+      GITSVN_OUTPUT_WARNING: 300  # 5분 후 경고
+      GITSVN_OUTPUT_TIMEOUT: 1200  # 20분 후 종료 (SourceForge 대응)
     depends_on:
       db:
         condition: service_healthy

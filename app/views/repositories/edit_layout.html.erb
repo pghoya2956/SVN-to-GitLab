@@ -141,11 +141,16 @@
                 <%= f.label :custom_trunk_path, "Trunk 경로 (메인 개발 라인)", class: "form-label" %>
                 <%= f.text_field :custom_trunk_path, 
                     class: "form-control",
-                    placeholder: "예: trunk, main, src, development/stable",
+                    placeholder: "예: trunk, main, src, development/stable 또는 . (전체)",
                     value: @repository.custom_trunk_path || @repository.svn_structure&.dig('alternative_trunk') || @repository.svn_structure&.dig('detected_trunk'),
                     data: { "layout-config-target": "trunkPath" } %>
                 <div class="form-text">
-                  메인 개발이 이루어지는 디렉토리 경로. <strong class="text-danger">비워두면 전체를 trunk로 간주합니다.</strong>
+                  메인 개발이 이루어지는 디렉토리 경로.
+                  <ul class="mb-0 mt-1">
+                    <li><strong>"." 입력:</strong> 전체 저장소를 단일 Git 저장소로 변환 (브랜치/태그 무시)</li>
+                    <li><strong>특정 경로 입력:</strong> 해당 디렉토리만 trunk로 사용</li>
+                    <li><strong>비워두기:</strong> trunk 디렉토리가 없음 (경고)</li>
+                  </ul>
                 </div>
               </div>
               
@@ -254,7 +259,11 @@
 document.addEventListener('DOMContentLoaded', function() {
   const layoutTypeSelect = document.getElementById('repository_layout_type');
   const customPaths = document.getElementById('custom-paths');
+  const trunkPath = document.getElementById('repository_custom_trunk_path');
+  const branchesDiv = document.querySelector('[data-layout-config-target="branchesPath"]')?.closest('.mb-3');
+  const tagsDiv = document.querySelector('[data-layout-config-target="tagsPath"]')?.closest('.mb-3');
   
+  // Handle layout type changes
   if (layoutTypeSelect && customPaths) {
     layoutTypeSelect.addEventListener('change', function() {
       if (this.value === 'standard') {
@@ -263,6 +272,45 @@ document.addEventListener('DOMContentLoaded', function() {
         customPaths.classList.remove('d-none');
       }
     });
+  }
+  
+  // Handle trunk path changes - hide branches/tags when trunk is "."
+  if (trunkPath && branchesDiv && tagsDiv) {
+    function toggleBranchesTagsVisibility() {
+      if (trunkPath.value === '.') {
+        branchesDiv.style.display = 'none';
+        tagsDiv.style.display = 'none';
+        // Clear values when hidden
+        document.getElementById('repository_custom_branches_path').value = '';
+        document.getElementById('repository_custom_tags_path').value = '';
+        
+        // Show info message
+        const infoAlert = document.createElement('div');
+        infoAlert.className = 'alert alert-info mt-2';
+        infoAlert.innerHTML = '<i class="bi bi-info-circle me-2"></i>전체 저장소가 단일 Git 저장소로 변환됩니다. 브랜치/태그 설정이 무시됩니다.';
+        infoAlert.id = 'entire-repo-info';
+        
+        const existingInfo = document.getElementById('entire-repo-info');
+        if (!existingInfo && trunkPath.parentNode) {
+          trunkPath.parentNode.appendChild(infoAlert);
+        }
+      } else {
+        branchesDiv.style.display = '';
+        tagsDiv.style.display = '';
+        
+        // Remove info message
+        const existingInfo = document.getElementById('entire-repo-info');
+        if (existingInfo) {
+          existingInfo.remove();
+        }
+      }
+    }
+    
+    // Initial check
+    toggleBranchesTagsVisibility();
+    
+    // Listen for changes
+    trunkPath.addEventListener('input', toggleBranchesTagsVisibility);
   }
 });
 </script>

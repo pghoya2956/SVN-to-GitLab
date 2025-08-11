@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_08_11_054846) do
+ActiveRecord::Schema[7.1].define(version: 2025_08_11_071434) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -93,6 +93,7 @@ ActiveRecord::Schema[7.1].define(version: 2025_08_11_054846) do
     t.integer "total_revisions"
     t.integer "latest_revision"
     t.string "gitlab_target_branch", default: "main"
+    t.datetime "last_detected_at"
     t.index ["enable_incremental_sync"], name: "index_repositories_on_enable_incremental_sync"
     t.index ["gitlab_project_id"], name: "index_repositories_on_gitlab_project_id"
     t.index ["last_synced_at"], name: "index_repositories_on_last_synced_at"

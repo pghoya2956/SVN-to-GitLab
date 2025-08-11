@@ -141,54 +141,35 @@ class RepositoriesController < ApplicationController
   
   # POST /repositories/1/detect_structure
   def detect_structure
-    detector = Repositories::SvnStructureDetector.new(@repository)
-    result = detector.call
+    # 이미 진행 중인 감지 작업이 있는지 확인
+    if @repository.jobs.where(job_type: 'structure_detection', status: ['pending', 'running']).exists?
+      respond_to do |format|
+        format.json { render json: { success: false, error: "이미 구조 감지가 진행 중입니다." }, status: :unprocessable_entity }
+        format.html { redirect_to @repository, alert: "이미 구조 감지가 진행 중입니다." }
+      end
+      return
+    end
     
-    if result[:success]
-      # layout_type도 함께 업데이트
-      layout_type_mapping = {
-        'standard' => 'standard',
-        'partial_standard' => 'custom',
-        'non_standard' => 'custom'
+    # 백그라운드 작업으로 실행
+    job_id = SvnStructureDetectionJob.perform_later(@repository.id)
+    
+    # 생성된 Job 찾기 (약간의 지연 후)
+    sleep 0.5
+    job = @repository.jobs.where(job_type: 'structure_detection').order(created_at: :desc).first
+    
+    respond_to do |format|
+      format.json { 
+        render json: { 
+          success: true, 
+          job_id: job&.id,
+          message: "SVN 구조 감지가 백그라운드에서 시작되었습니다."
+          # job_url 제거 - Repository 페이지에 남아있도록
+        } 
       }
-      
-      @repository.update!(
-        svn_structure: result[:structure],
-        authors_mapping: result[:authors],
-        layout_type: layout_type_mapping[result[:structure][:layout]] || 'custom',
-        latest_revision: result[:stats][:latest_revision],
-        total_revisions: result[:stats][:latest_revision]  # SVN에서는 latest가 곧 total
-      )
-      
-      # Prepare response data
-      response_data = {
-        success: true,
-        structure: result[:structure],
-        authors: result[:authors],
-        stats: result[:stats],
-        message: "SVN 구조가 성공적으로 감지되었습니다. #{result[:structure][:layout]} 레이아웃과 #{result[:authors].size}명의 작성자를 찾았습니다."
+      format.html { 
+        redirect_to @repository, 
+        notice: "SVN 구조 감지가 백그라운드에서 시작되었습니다. 잠시 후 자동으로 업데이트됩니다." 
       }
-      
-      respond_to do |format|
-        format.json { render json: response_data }
-        format.html { redirect_to @repository, notice: response_data[:message] }
-      end
-    else
-      error_message = case result[:error]
-      when /authentication/i
-        "SVN 저장소 인증에 실패했습니다. 인증 정보를 확인해주세요."
-      when /not found/i, /does not exist/i
-        "SVN URL이 올바르지 않거나 접근할 수 없습니다."
-      when /timeout/i
-        "연결 시간이 초과되었습니다. 네트워크 상태를 확인해주세요."
-      else
-        result[:error]
-      end
-      
-      respond_to do |format|
-        format.json { render json: { success: false, error: error_message }, status: :unprocessable_entity }
-        format.html { redirect_to @repository, alert: "SVN 구조 감지 실패: #{error_message}" }
-      end
     end
   end
   
@@ -196,15 +177,16 @@ class RepositoriesController < ApplicationController
   def edit_authors
     # Ensure authors_mapping exists
     if @repository.authors_mapping.blank?
-      # Try to detect structure first
-      detector = Repositories::SvnStructureDetector.new(@repository)
-      result = detector.call
-      
-      if result[:success]
-        @repository.update!(authors_mapping: result[:authors])
+      # Check if we have authors from previous structure detection
+      if @repository.svn_structure.present? && @repository.svn_structure['authors'].present?
+        # Use already detected authors
+        @repository.update!(authors_mapping: @repository.svn_structure['authors'])
       else
-        # Create empty authors mapping
+        # Start background detection to get authors
+        SvnStructureDetectionJob.perform_later(@repository.id)
+        # 빈 authors로 시작하고, 백그라운드에서 감지되면 ActionCable로 업데이트
         @repository.update!(authors_mapping: [])
+        flash.now[:notice] = "Authors 정보를 백그라운드에서 감지 중입니다. 잠시 후 다시 확인해주세요."
       end
     end
   end
@@ -254,6 +236,11 @@ class RepositoriesController < ApplicationController
       :layout_type, :custom_trunk_path, :custom_branches_path, :custom_tags_path
     )
     
+    # 빈 문자열을 nil로 변환하지 않도록 처리
+    # branches/가 입력되면 그대로 저장
+    layout_params[:custom_branches_path] = nil if layout_params[:custom_branches_path] == ""
+    layout_params[:custom_tags_path] = nil if layout_params[:custom_tags_path] == ""
+    
     if @repository.update(layout_params)
       # svn_structure 업데이트
       structure = @repository.svn_structure || {}
@@ -265,7 +252,11 @@ class RepositoriesController < ApplicationController
       }
       @repository.update!(svn_structure: structure)
       
-      redirect_to @repository, notice: "레이아웃 구성이 저장되었습니다."
+      # 레이아웃 변경 시 백그라운드로 구조 재감지
+      SvnStructureDetectionJob.perform_later(@repository.id)
+      
+      # Repository 페이지로 리다이렉트 (Job 페이지가 아님!)
+      redirect_to @repository, notice: "레이아웃 구성이 저장되었습니다. SVN 구조를 백그라운드에서 재감지 중입니다."
     else
       render :edit_layout
     end

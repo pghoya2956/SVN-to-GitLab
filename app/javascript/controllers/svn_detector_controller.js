@@ -1,12 +1,13 @@
 import { Controller } from "@hotwired/stimulus"
 
 export default class extends Controller {
-  static targets = ["button", "spinner", "buttonText", "result", "structureInfo"]
+  static targets = ["button", "spinner", "buttonText", "result", "structureInfo", "progressLog", "progressCard"]
   
   async detect(event) {
     event.preventDefault();
     const button = event.currentTarget;
     const url = button.dataset.url;
+    const repositoryId = button.dataset.repositoryId;
     
     // 이미 감지된 구조가 있는지 확인
     if (button.dataset.hasStructure === "true") {
@@ -15,8 +16,8 @@ export default class extends Controller {
       }
     }
     
-    // 로딩 상태 표시
-    this.showLoading();
+    // 즉시 진행 중 UI로 변경
+    this.showDetectionInProgress(repositoryId);
     
     try {
       const response = await fetch(url, {
@@ -30,17 +31,100 @@ export default class extends Controller {
       
       const data = await response.json();
       
-      if (data.success) {
-        this.updateUI(data);
-        this.showSuccess(data.message || "SVN 구조 감지가 완료되었습니다!");
-      } else {
+      if (!data.success) {
         this.showError(data.error || "SVN 구조 감지에 실패했습니다.");
+        // 실패 시 원래 상태로 복원
+        setTimeout(() => {
+          location.reload();
+        }, 2000);
       }
+      // 성공 시에는 ActionCable이 자동으로 업데이트하므로 아무것도 하지 않음
     } catch (error) {
       this.showError("네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
       console.error('Detection error:', error);
-    } finally {
-      this.hideLoading();
+      // 에러 시 원래 상태로 복원
+      setTimeout(() => {
+        location.reload();
+      }, 2000);
+    }
+  }
+  
+  showDetectionInProgress(repositoryId, jobId = null) {
+    // 기존 구조 정보를 진행 중 UI로 즉시 교체
+    if (this.hasStructureInfoTarget) {
+      this.structureInfoTarget.innerHTML = `
+        <div class="alert alert-info p-2 mb-2" data-svn-detector-target="progressCard">
+          <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm me-2" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+            <div class="flex-grow-1">
+              <strong>구조 감지 진행 중...</strong><br>
+              <small>다른 페이지로 이동해도 계속 진행됩니다.</small>
+            </div>
+          </div>
+          <div class="mt-2 p-2 bg-dark text-light rounded" style="font-family: monospace; font-size: 0.75rem; max-height: 150px; overflow-y: auto;">
+            <div data-svn-detector-target="progressLog">
+              <div class="text-warning">🔄 구조 감지를 시작합니다...</div>
+            </div>
+          </div>
+          ${jobId ? `<div class="mt-2">
+            <a href="/jobs/${jobId}" class="btn btn-sm btn-primary" target="_blank">
+              <i class="bi bi-eye me-1"></i>전체 로그 보기
+            </a>
+          </div>` : ''}
+        </div>
+      `;
+      
+      // SVN 구조 섹션으로 스크롤
+      this.structureInfoTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      
+      // 섹션에 하이라이트 효과 추가
+      const structureSection = this.structureInfoTarget.closest('.col-md-4');
+      if (structureSection) {
+        structureSection.classList.add('highlight-section');
+        setTimeout(() => {
+          structureSection.classList.remove('highlight-section');
+        }, 2000);
+      }
+    }
+  }
+  
+  addProgressMessage(message) {
+    // 진행 중인 로그 메시지 추가
+    if (this.hasProgressLogTarget) {
+      const logDiv = document.createElement('div');
+      
+      // 메시지 타입에 따라 색상 결정
+      let className = 'text-light';
+      if (message.includes('✅') || message.includes('완료')) {
+        className = 'text-success';
+      } else if (message.includes('❌') || message.includes('실패') || message.includes('ERROR')) {
+        className = 'text-danger';
+      } else if (message.includes('⚠️') || message.includes('경고')) {
+        className = 'text-warning';
+      } else if (message.includes('🔍') || message.includes('확인')) {
+        className = 'text-info';
+      } else if (message.includes('📊') || message.includes('결과')) {
+        className = 'text-primary fw-bold';
+      } else if (message.includes('=====')) {
+        className = 'text-secondary';
+      }
+      
+      logDiv.className = className;
+      logDiv.style.fontSize = '0.7rem';
+      logDiv.style.lineHeight = '1.2';
+      logDiv.textContent = message;
+      
+      this.progressLogTarget.appendChild(logDiv);
+      
+      // 최대 20줄만 유지 (메모리 절약)
+      while (this.progressLogTarget.children.length > 20) {
+        this.progressLogTarget.removeChild(this.progressLogTarget.firstChild);
+      }
+      
+      // 자동 스크롤
+      this.progressLogTarget.parentElement.scrollTop = this.progressLogTarget.parentElement.scrollHeight;
     }
   }
   

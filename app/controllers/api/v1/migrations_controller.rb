@@ -25,22 +25,11 @@ module Api
       def create
         repository = current_user.repositories.create!(migration_params)
         
-        # SVN 구조 감지
+        # SVN 구조 감지 (백그라운드)
         if repository.full_history?
-          detector = Repositories::SvnStructureDetector.new(repository)
-          result = detector.call
-          
-          if result[:success]
-            repository.update!(
-              svn_structure: result[:structure],
-              authors_mapping: result[:authors].each_with_object({}) do |author, hash|
-                hash[author[:svn_name]] = {
-                  name: author[:svn_name],
-                  email: "#{author[:svn_name]}@example.com"
-                }
-              end
-            )
-          end
+          # 백그라운드로 구조 감지 시작
+          SvnStructureDetectionJob.perform_later(repository.id)
+          # API 응답은 즉시 반환하고, 클라이언트가 상태를 폴링하도록 함
         end
         
         # 마이그레이션 작업 생성

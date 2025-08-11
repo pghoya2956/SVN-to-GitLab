@@ -8,11 +8,19 @@ module Repositories
     def call
       append_output("Starting SVN structure detection...")
       
+      structure = detect_structure
+      stats = gather_statistics
+      
+      # Calculate revisions based on paths
+      total_revisions = calculate_revisions
+      stats[:total_revisions] = total_revisions if total_revisions > 0
+      
       {
         success: true,
-        structure: detect_structure,
+        structure: structure,
         authors: extract_authors,
-        stats: gather_statistics
+        stats: stats,
+        total_revisions: total_revisions
       }
     rescue => e
       append_output("ERROR: #{e.message}")
@@ -296,9 +304,231 @@ module Repositories
       cmd
     end
     
+    def calculate_revisions
+      append_output("=" * 60)
+      append_output("📊 리비전 계산 시작...")
+      append_output("=" * 60)
+      
+      # For custom layout, ONLY use explicitly configured paths
+      # For standard layout, use detected structure
+      if @repository.layout_type == 'custom'
+        trunk_path = @repository.custom_trunk_path.presence
+        branches_path = @repository.custom_branches_path.presence
+        tags_path = @repository.custom_tags_path.presence
+        append_output("")
+        append_output("📋 레이아웃 타입: 커스텀 (사용자 정의)")
+        append_output("✅ 사용자가 설정한 경로만 사용합니다:")
+        append_output("  • Trunk: #{trunk_path ? "✅ #{trunk_path}" : '❌ 설정 안됨'}")
+        append_output("  • Branches: #{branches_path ? "✅ #{branches_path}" : '❌ 설정 안됨'}")
+        append_output("  • Tags: #{tags_path ? "✅ #{tags_path}" : '❌ 설정 안됨'}")
+      else
+        # For standard/auto-detected layouts, use detected structure
+        trunk_path = @repository.custom_trunk_path.presence || @repository.parsed_svn_structure['trunk']
+        branches_path = @repository.custom_branches_path.presence || @repository.parsed_svn_structure['branches']
+        tags_path = @repository.custom_tags_path.presence || @repository.parsed_svn_structure['tags']
+        append_output("")
+        append_output("📋 레이아웃 타입: 표준/자동감지")
+        append_output("✅ 감지된 구조 또는 커스텀 경로 사용:")
+        append_output("  • Trunk: #{trunk_path ? "✅ #{trunk_path}" : '❌ 없음'}")
+        append_output("  • Branches: #{branches_path ? "✅ #{branches_path}" : '❌ 없음'}")
+        append_output("  • Tags: #{tags_path ? "✅ #{tags_path}" : '❌ 없음'}")
+      end
+      
+      append_output("")
+      append_output("-" * 60)
+      
+      # Special case: entire repository as trunk
+      if trunk_path == '.'
+        append_output("⚠️ 특수 케이스: 전체 저장소를 Trunk로 사용")
+        append_output("🔍 전체 저장소의 리비전을 계산합니다...")
+        total = get_total_revisions(@repository.svn_url)
+        append_output("✅ 전체 저장소 리비전: #{total}")
+        append_output("")
+        append_output("=" * 60)
+        append_output("📊 최종 결과: #{total} 리비전")
+        append_output("=" * 60)
+        return total
+      end
+      
+      # Only trunk specified
+      if trunk_path.present? && branches_path.blank? && tags_path.blank?
+        append_output("📍 단일 경로 모드: Trunk만 설정됨")
+        append_output("🔍 #{trunk_path} 경로의 리비전을 계산합니다...")
+        trunk_rev = get_path_revisions("#{@repository.svn_url}/#{trunk_path}")
+        append_output("✅ Trunk 리비전: #{trunk_rev}")
+        append_output("")
+        append_output("=" * 60)
+        append_output("📊 최종 결과: #{trunk_rev} 리비전 (Trunk 경로만 마이그레이션)")
+        append_output("=" * 60)
+        return trunk_rev
+      end
+      
+      # Multiple paths specified - get maximum revision
+      append_output("📍 다중 경로 모드: 여러 경로가 설정됨")
+      append_output("🔍 각 경로의 리비전을 계산합니다...")
+      append_output("")
+      
+      revisions = {}
+      
+      if trunk_path.present? && trunk_path != '.'
+        append_output("🔄 Trunk 경로 확인 중: #{trunk_path}")
+        trunk_rev = get_path_revisions("#{@repository.svn_url}/#{trunk_path}")
+        if trunk_rev > 0
+          append_output("  ✅ Trunk 리비전: #{trunk_rev}")
+          revisions[:trunk] = trunk_rev
+        else
+          append_output("  ❌ Trunk 경로를 찾을 수 없음")
+        end
+        append_output("")
+      end
+      
+      if branches_path.present?
+        append_output("🔄 Branches 경로 확인 중: #{branches_path}")
+        branches_rev = get_max_branch_revision("#{@repository.svn_url}/#{branches_path}")
+        if branches_rev > 0
+          append_output("  ✅ Branches 최대 리비전: #{branches_rev}")
+          revisions[:branches] = branches_rev
+        else
+          append_output("  ❌ Branches 경로를 찾을 수 없거나 비어있음")
+        end
+        append_output("")
+      end
+      
+      if tags_path.present?
+        append_output("🔄 Tags 경로 확인 중: #{tags_path}")
+        tags_rev = get_max_tag_revision("#{@repository.svn_url}/#{tags_path}")
+        if tags_rev > 0
+          append_output("  ✅ Tags 최대 리비전: #{tags_rev}")
+          revisions[:tags] = tags_rev
+        else
+          append_output("  ❌ Tags 경로를 찾을 수 없거나 비어있음")
+        end
+        append_output("")
+      end
+      
+      if revisions.empty?
+        max_revision = get_total_revisions(@repository.svn_url)
+        append_output("⚠️ 특정 경로를 찾을 수 없어 전체 저장소 리비전 사용: #{max_revision}")
+      else
+        max_revision = revisions.values.max
+        max_source = revisions.key(max_revision)
+        
+        append_output("=" * 60)
+        append_output("📊 리비전 계산 결과:")
+        append_output("=" * 60)
+        append_output("")
+        append_output("  Trunk:    #{revisions[:trunk] ? sprintf('%6d', revisions[:trunk]) : '     -'} 리비전")
+        append_output("  Branches: #{revisions[:branches] ? sprintf('%6d', revisions[:branches]) : '     -'} 리비전")
+        append_output("  Tags:     #{revisions[:tags] ? sprintf('%6d', revisions[:tags]) : '     -'} 리비전")
+        append_output("")
+        append_output("  🏆 최대값: #{max_source.to_s.capitalize} (#{max_revision} 리비전)")
+        append_output("")
+        append_output("💡 설명: git-svn은 모든 경로의 히스토리를 포함해야 하므로")
+        append_output("         가장 큰 리비전 번호를 사용합니다.")
+        append_output("")
+        append_output("=" * 60)
+        append_output("📊 최종 마이그레이션 리비전: #{max_revision}")
+        append_output("=" * 60)
+      end
+      
+      max_revision
+    end
+    
+    def get_total_revisions(url)
+      cmd = build_svn_command(['svn', 'info', url])
+      stdout, _, status = Open3.capture3(*cmd)
+      
+      return 0 unless status.success?
+      
+      if stdout =~ /Last Changed Rev: (\d+)/
+        $1.to_i
+      elsif stdout =~ /Revision: (\d+)/
+        $1.to_i
+      else
+        0
+      end
+    end
+    
+    def get_path_revisions(url)
+      cmd = build_svn_command(['svn', 'info', url])
+      stdout, stderr, status = Open3.capture3(*cmd)
+      
+      unless status.success?
+        append_output("Failed to get info for #{url}: #{stderr}")
+        return 0
+      end
+      
+      if stdout =~ /Last Changed Rev: (\d+)/
+        $1.to_i
+      elsif stdout =~ /Revision: (\d+)/
+        $1.to_i
+      else
+        0
+      end
+    end
+    
+    def get_max_branch_revision(branches_url)
+      cmd = build_svn_command(['svn', 'ls', branches_url])
+      stdout, stderr, status = Open3.capture3(*cmd)
+      
+      unless status.success?
+        append_output("Failed to list branches: #{stderr}")
+        return 0
+      end
+      
+      branches = stdout.lines.map(&:strip).reject(&:empty?)
+      return 0 if branches.empty?
+      
+      max_rev = 0
+      branches.each do |branch|
+        next unless branch.end_with?('/')
+        branch_name = branch.chomp('/')
+        branch_rev = get_path_revisions("#{branches_url}/#{branch_name}")
+        max_rev = branch_rev if branch_rev > max_rev
+      end
+      
+      max_rev
+    end
+    
+    def get_max_tag_revision(tags_url)
+      cmd = build_svn_command(['svn', 'ls', tags_url])
+      stdout, stderr, status = Open3.capture3(*cmd)
+      
+      unless status.success?
+        append_output("Failed to list tags: #{stderr}")
+        return 0
+      end
+      
+      tags = stdout.lines.map(&:strip).reject(&:empty?)
+      return 0 if tags.empty?
+      
+      max_rev = 0
+      tags.each do |tag|
+        next unless tag.end_with?('/')
+        tag_name = tag.chomp('/')
+        tag_rev = get_path_revisions("#{tags_url}/#{tag_name}")
+        max_rev = tag_rev if tag_rev > max_rev
+      end
+      
+      max_rev
+    end
+    
     def append_output(message)
       return unless @job
       @job.append_output("[SvnStructureDetector] #{message}")
+      
+      # 실시간으로 진행 상황을 브로드캐스트
+      ActionCable.server.broadcast(
+        "repository_#{@repository.id}",
+        {
+          type: 'structure_detection_progress',
+          message: message,
+          job_id: @job.id
+        }
+      )
+    rescue => e
+      # 브로드캐스트 실패는 무시 (로그는 계속 기록)
+      Rails.logger.error "Failed to broadcast: #{e.message}"
     end
   end
 end

@@ -9,3 +9,6 @@ application.register("svn-detector", SvnDetectorController)
 
 import LayoutConfigController from "./layout_config_controller"
 application.register("layout-config", LayoutConfigController)
+
+import RepositorySubscriptionController from "./repository_subscription_controller"
+application.register("repository-subscription", RepositorySubscriptionController)

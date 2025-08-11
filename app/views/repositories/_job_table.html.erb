@@ -1,0 +1,73 @@
+<div class="table-responsive">
+  <table class="table table-hover">
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>Started</th>
+        <th>Duration</th>
+        <th>Progress</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% jobs.each do |job| %>
+        <tr>
+          <td>
+            <% status_icon = case job.status
+               when 'completed' then 'bi-check-circle-fill'
+               when 'failed' then 'bi-x-circle-fill'
+               when 'running' then 'bi-arrow-repeat'
+               when 'cancelled' then 'bi-dash-circle-fill'
+               else 'bi-hourglass-split'
+               end %>
+            <span class="status-badge status-<%= job.status %>">
+              <i class="bi <%= status_icon %>"></i>
+              <%= job.status.capitalize %>
+            </span>
+          </td>
+          <td><%= job.started_at&.strftime('%Y-%m-%d %H:%M') || '-' %></td>
+          <td><%= job.formatted_duration %></td>
+          <td>
+            <% if job.active? %>
+              <div class="d-flex align-items-center">
+                <div class="progress" style="width: 100px; height: 20px;">
+                  <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                       role="progressbar"
+                       style="width: <%= job.progress_percentage %>%"
+                       aria-valuenow="<%= job.progress_percentage %>"
+                       aria-valuemin="0"
+                       aria-valuemax="100">
+                    <%= job.progress_percentage %>%
+                  </div>
+                </div>
+                <% if job.current_revision && job.total_revisions && job.total_revisions > 0 %>
+                  <small class="text-muted ms-2">
+                    r<%= job.current_revision %> / <%= job.total_revisions %>
+                  </small>
+                <% end %>
+              </div>
+            <% else %>
+              <div class="d-flex align-items-center">
+                <div class="progress" style="width: 100px; height: 20px;">
+                  <div class="progress-bar <%= job.completed? ? 'bg-success' : 'bg-danger' %>" 
+                       role="progressbar"
+                       style="width: <%= job.progress_percentage %>%"
+                       aria-valuenow="<%= job.progress_percentage %>"
+                       aria-valuemin="0"
+                       aria-valuemax="100">
+                    <small><%= job.progress_percentage %>%</small>
+                  </div>
+                </div>
+              </div>
+            <% end %>
+          </td>
+          <td>
+            <%= link_to job_path(job), class: "btn btn-sm btn-outline-primary" do %>
+              <i class="bi bi-eye"></i> View
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

@@ -10,6 +10,42 @@
       <% end %>
     </div>
   </div>
+  
+  <!-- Job Type 탭 네비게이션 -->
+  <ul class="nav nav-tabs mt-4" id="jobTypeTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <%= link_to jobs_path, 
+          class: "nav-link #{'active' if params[:job_type].blank?}" do %>
+        <i class="bi bi-grid me-1"></i>
+        All Jobs
+        <span class="badge bg-secondary ms-1"><%= @job_counts[:all] %></span>
+      <% end %>
+    </li>
+    <li class="nav-item" role="presentation">
+      <%= link_to jobs_path(job_type: 'migration'), 
+          class: "nav-link #{'active' if params[:job_type] == 'migration'}" do %>
+        <i class="bi bi-arrow-left-right me-1"></i>
+        Migrations
+        <span class="badge bg-primary ms-1"><%= @job_counts[:migration] %></span>
+      <% end %>
+    </li>
+    <li class="nav-item" role="presentation">
+      <%= link_to jobs_path(job_type: 'incremental_sync'), 
+          class: "nav-link #{'active' if params[:job_type] == 'incremental_sync'}" do %>
+        <i class="bi bi-arrow-repeat me-1"></i>
+        Incremental Syncs
+        <span class="badge bg-info ms-1"><%= @job_counts[:incremental_sync] %></span>
+      <% end %>
+    </li>
+    <li class="nav-item" role="presentation">
+      <%= link_to jobs_path(job_type: 'structure_detection'), 
+          class: "nav-link #{'active' if params[:job_type] == 'structure_detection'}" do %>
+        <i class="bi bi-diagram-3 me-1"></i>
+        Structure Detection
+        <span class="badge bg-warning ms-1"><%= @job_counts[:structure_detection] %></span>
+      <% end %>
+    </li>
+  </ul>
       
   <div class="row mt-4">
     <div class="col-md-12">
@@ -22,7 +58,11 @@
       <% else %>
         <div class="empty-state">
           <i class="bi bi-inbox"></i>
-          <h4>No migration jobs yet</h4>
+          <% if params[:job_type].present? %>
+            <h4>No <%= params[:job_type].humanize.downcase %> jobs yet</h4>
+          <% else %>
+            <h4>No migration jobs yet</h4>
+          <% end %>
           <p>Start by creating a repository and configuring it for migration.</p>
           <%= link_to new_repository_path, class: "btn btn-primary" do %>
             <i class="bi bi-plus-circle me-1"></i> Create Repository

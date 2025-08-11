@@ -1,12 +1,16 @@
 class Repository < ApplicationRecord
   has_many :jobs, dependent: :destroy
   
+  # Layout types constant
+  LAYOUT_TYPES = %w[standard non_standard custom].freeze
+  
   # Callbacks for cleanup
   before_destroy :cleanup_local_files
   
   validates :name, presence: true
   validates :svn_url, presence: true
   validates :auth_type, inclusion: { in: %w[none basic ssh token] }
+  validates :layout_type, inclusion: { in: LAYOUT_TYPES }, allow_nil: true
   
   # Repository source type
   enum :source_type, {
@@ -129,6 +133,23 @@ class Repository < ApplicationRecord
   # Get SVN tags path (커스텀 경로 우선)
   def tags_path
     custom_tags_path.presence || parsed_svn_structure.dig('tags') || 'tags'
+  end
+  
+  # Check if repository can be migrated
+  def can_migrate?
+    gitlab_project_id.present? && 
+    total_revisions.present? && 
+    total_revisions > 0
+  end
+  
+  # Check if repository needs redetection
+  def needs_redetection?
+    return true if last_detected_at.nil?
+    return true if updated_at > last_detected_at
+    return true if custom_trunk_path_changed?
+    return true if custom_branches_path_changed?
+    return true if custom_tags_path_changed?
+    false
   end
   
   # Git SVN 명령에 사용할 레이아웃 옵션 생성 (단일 원천)

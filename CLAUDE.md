@@ -7,184 +7,154 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # Setup
 bin/setup                    # Initial setup (builds Docker, creates DB)
+./scripts/init_volumes.sh    # Initialize Docker volumes (first run only)
 
-# Development
+# Development  
 docker compose up            # Start all services
 docker compose logs -f web   # View Rails logs
+docker compose logs -f sidekiq # View background job logs
 docker compose run --rm web rails console
 docker compose run --rm web rails db:migrate
 
 # Testing
 bin/test                     # Run all tests
 docker compose run --rm -e RAILS_ENV=test web rails test
+docker compose run --rm -e RAILS_ENV=test web rails test test/integration/thread_safety_test.rb
+./scripts/run_e2e_tests.sh  # Run Playwright E2E tests
 docker compose run --rm web npx playwright test
 
 # Database
 docker compose run --rm web rails db:reset  # Reset database
+docker compose run --rm web rails db:seed   # Seed test data
+
+# Sidekiq/Background Jobs
+docker compose exec web rails c
+> Sidekiq::Queue.all.map { |q| [q.name, q.size] }
+> Sidekiq::Workers.new.size  # Check running jobs
 ```
 
 ## Architecture
 
-Rails 7.1 app with Sidekiq background jobs for SVN-to-GitLab migration.
+Rails 7.1 application with Sidekiq background jobs for SVN-to-GitLab migration using git-svn.
 
-### Key Components
+### Core Components
 
 1. **Service Objects** (`app/services/repositories/`)
-   - `GitlabConnector`: GitLab API wrapper
-   - `ValidatorService`: SVN repository validation  
-   - `MigrationStrategyService`: Migration configuration
-   - `SvnStructureDetector`: SVN 구조 자동 감지 및 Authors 추출
+   - `GitlabConnector`: GitLab API wrapper for project operations
+   - `ValidatorService`: SVN repository validation and authentication
+   - `MigrationStrategyService`: Migration configuration management
+   - `SvnStructureDetector`: SVN layout detection with path-specific revision calculation
 
 2. **Background Jobs** (`app/jobs/`)
-   - `MigrationJob`: Main migration process (git svn clone → GitLab push) - 전체 커밋 이력 보존
-     - Uses thread-based I/O handling for stdout/stderr/monitoring
-     - Instance variables for thread communication: `@last_output_time`, `@output_count`, `@process_died`
-   - `IncrementalSyncJob`: Sync changes after initial migration (git svn fetch/rebase)
+   - `MigrationJob`: Main migration using git-svn (preserves full commit history)
+     - Thread-based I/O handling with instance variables: `@last_output_time`, `@output_count`, `@process_died`
+     - Checkpoint system for resumable migrations
+     - Environment variables: `GITSVN_OUTPUT_WARNING=300`, `GITSVN_OUTPUT_TIMEOUT=600`
+   - `IncrementalSyncJob`: Post-migration sync (git svn fetch/rebase)
+   - `SvnStructureDetectionJob`: Background SVN structure detection with ActionCable notifications
 
-3. **Multi-tenancy**
-   - `User.current` thread-local storage
-   - `default_scope` on models for data isolation
+3. **Real-time Communication**
+   - ActionCable channels: `JobChannel`, `RepositoryChannel`
+   - WebSocket-based progress updates
+   - Live log streaming during migration
 
-4. **Authentication**
-   - GitLab tokens: Base64 encoded (needs stronger encryption for production)
-   - SVN credentials: Stored per repository
+4. **Data Persistence**
+   - `git_repos/`: Permanent storage for converted repositories (Docker volume)
+   - Checkpoint data stored in Job model for resumability
+   - Authors mapping stored per repository
 
-## 아키텍처 개요
+## 📌 Critical Design Principles
 
-- **프레임워크**: Ruby on Rails 7.1
-- **백그라운드 처리**: Sidekiq 7.2 
-- **데이터베이스**: PostgreSQL 15
-- **캐시**: Redis 7
-- **실시간 통신**: ActionCable (WebSocket)
-- **컨테이너화**: Docker & Docker Compose
-- **버전 관리 변환**: git-svn (전체 커밋 이력 보존)
+### 1. git-svn을 신뢰하라
+- git-svn은 모든 엣지 케이스를 이미 처리하는 성숙한 도구
+- 브랜치 중복, 경로 겹침 등은 git-svn이 자동으로 해결
+- 우리의 역할은 단순히 사용자 입력을 git-svn에 전달하는 것
 
-## 주요 디렉토리 구조
+```ruby
+# GOOD: Simple pass-through
+def git_svn_layout_options
+  options = []
+  options << ['--trunk', custom_trunk_path] if custom_trunk_path.present?
+  options << ['--branches', custom_branches_path] if custom_branches_path.present?
+  options << ['--tags', custom_tags_path] if custom_tags_path.present?
+  options.flatten
+end
 
-- `app/controllers/` - 웹 컨트롤러 및 API 엔드포인트
-- `app/jobs/` - Sidekiq 백그라운드 작업
-- `app/services/repositories/` - 비즈니스 로직 서비스
-- `app/channels/` - ActionCable 실시간 통신
-- `git_repos/` - 변환된 Git 저장소 영구 저장 (Docker 볼륨)
+# BAD: Trying to handle overlapping paths or validation
+# git-svn automatically handles cases like:
+# --trunk branches/ace_wrapper --branches branches
+```
 
-## Critical Paths
+### 2. 복잡한 검증 로직을 추가하지 마라
+- 중복 경로 체크 ❌
+- 특수 케이스별 분기 처리 ❌
+- git-svn의 동작을 예측하려는 시도 ❌
+- **오버엔지니어링은 오히려 문제를 만든다**
 
-1. **Migration Flow**:
-   ```
-   RepositoriesController#create → JobsController#create → MigrationJob#perform → 
-   git svn clone (with authors mapping) → GitLab push
-   ```
+### 3. UI와 실제 동작을 구분하라
+- UI 표시 문제 ≠ git-svn 동작 문제
+- 데이터 저장 문제 ≠ 마이그레이션 로직 문제
+- 각 레이어의 책임을 명확히 구분
 
-2. **GitLab Integration**:
-   ```
-   GitlabTokensController → GitlabConnector#fetch_projects → 
-   Store project_id in Repository
-   ```
+### 4. KISS 원칙 (Keep It Simple, Stupid)
+- 사용자 입력 → 저장 → git-svn 전달
+- 에러 발생 시 git-svn 메시지 그대로 표시
+- 불필요한 중간 처리 최소화
 
-3. **Job Tracking**:
-   - Status: pending → running → completed/failed
-   - Logs: `output_log` and `error_log` fields
-   - Progress: Updated via `job.update(progress: n)`
-   - Checkpoint system for resumable migrations
+### Path-Specific Revision Calculation
+When calculating revisions for migration, use path-specific counts:
+- `trunk="."`: Use total repository revisions
+- Single trunk: Use trunk path revisions only
+- Multiple paths: Use maximum revision across all paths
+
+### Thread Safety
+Instance variables for thread communication in MigrationJob:
+- Simple timestamp tracking with `@last_output_time`
+- No mutex needed for low-frequency updates (1-10/sec)
+- Ruby's atomic reference assignment is sufficient
 
 ## Database Schema
 
-Key relationships:
-- User has_many :repositories, :jobs
-- User has_one :gitlab_token
-- Repository has_many :jobs
-- Repository fields: `gitlab_project_id`, `local_git_path`, `enable_incremental_sync`
-- Job fields: `status`, `job_type`, `progress`, `output_log`, `error_log`
+Key models and relationships:
+- Repository: `has_many :jobs`
+  - Fields: `custom_trunk_path`, `custom_branches_path`, `custom_tags_path`, `layout_type`, `total_revisions`, `last_detected_at`
+- Job: `belongs_to :repository`
+  - Types: 'migration', 'incremental_sync', 'structure_detection'
+  - Checkpoint support: `checkpoint_data`, `resumable`, `current_revision`
 
-## Testing
+## Testing Approach
 
-### Unit Tests
-- Rails tests in `test/`
-- Run: `docker compose run --rm -e RAILS_ENV=test web rails test`
-- Thread safety test: `docker compose run --rm -e RAILS_ENV=test web rails test test/integration/thread_safety_test.rb`
-
-### E2E Tests
-- Playwright tests in `tests/e2e/svn_migration.test.ts`
-- Run: `./scripts/run_e2e_tests.sh`
-- Test credentials: ghdi7662@gmail.com / password123
-- Environment variables:
-  - `TEST_USER_EMAIL`: Test user email
-  - `TEST_USER_PASSWORD`: Test user password
-  - `TEST_GITLAB_TOKEN`: GitLab personal access token
-  - `HEADLESS`: Run in headless mode (true/false)
-  - `TEST_PATTERN`: Run specific tests matching pattern
-
-### Test Documentation
-- `docs/TEST_SVN_REPOSITORIES.md`: List of public SVN repos for testing
-- `docs/E2E_TEST_SCENARIOS.md`: Detailed test scenarios
-- `docs/TEST_RESULTS_TEMPLATE.md`: Template for recording test results
-
-### Test SVN Repositories (Public)
+### Test SVN Repositories
 1. **Small**: https://svn.code.sf.net/p/svnbook/source/trunk (~50MB)
 2. **Medium**: https://svn.apache.org/repos/asf/commons/proper/collections/trunk (~200MB)
 3. **Large**: https://svn.apache.org/repos/asf/subversion/trunk (>2GB)
 
-## Git-SVN Implementation
+### Special Test Cases
+- Trunk as subdirectory of branches: `--trunk branches/ace_wrapper --branches branches`
+- Entire repository as trunk: `--trunk .`
+- Non-standard layouts with custom paths
 
-git-svn을 사용하여 전체 커밋 이력을 보존하는 마이그레이션이 완전히 구현되었습니다
+## Current Feature Status
 
-### 전환 전략
-- 사용자가 없으므로 기존 코드를 직접 수정 (호환성 불필요)
-- MigrationJob과 IncrementalSyncJob을 git-svn 방식으로 수정
-- 새로운 Job 클래스 생성 없이 기존 클래스 수정
+All major features implemented:
+- ✅ Full history preservation with git-svn
+- ✅ Resumable migrations with checkpoints
+- ✅ Background structure detection (page navigation safe)
+- ✅ SVN layout auto-detection (standard/non-standard)
+- ✅ Authors mapping with UI
+- ✅ Real-time progress monitoring
+- ✅ Incremental sync post-migration
 
-### 현재 기능 상태
+## Known Issues & Solutions
 
-모든 주요 기능이 구현 완료되었습니다:
-- ✅ git-svn을 사용한 전체 커밋 이력 보존
-- ✅ 재개 가능한 마이그레이션 (체크포인트 시스템)
-- ✅ SVN 구조 자동 감지 (표준/비표준 레이아웃)
-- ✅ Authors 매핑 UI 및 실시간 미리보기
-- ✅ ActionCable 실시간 진행률 모니터링
-- ✅ 증분 동기화 (git svn fetch/rebase)
-
-## Critical Bug Fixes
-
-### Thread Variable Scope Bug (Fixed)
-MigrationJob에서 스레드 간 변수 공유 문제를 해결했습니다:
-
-**문제**: 로컬 변수 사용으로 스레드 간 공유 안됨
+### Rails Empty String Handling
+Rails converts empty strings to nil. Handle in controller:
 ```ruby
-# Before (버그)
-last_output_time = Time.now  # 로컬 변수
-Thread.new { last_output_time = Time.now }  # 스레드 로컬!
+layout_params[:custom_branches_path] = nil if layout_params[:custom_branches_path] == ""
 ```
 
-**해결**: 인스턴스 변수로 변경
-```ruby
-# After (수정됨)
-@last_output_time = Time.now  # 인스턴스 변수
-Thread.new { @last_output_time = Time.now }  # 공유됨
-```
-
-**수정 내역** (`app/jobs/migration_job.rb`):
-- Line 455-456: `@last_output_time`, `@output_count` 인스턴스 변수로 변경
-- Line 476: stderr 스레드에도 타임스탬프 업데이트 추가
-- Line 502: `@process_died` 인스턴스 변수로 변경
-- Line 505-506: 환경변수로 타임아웃 설정 가능
-
-### Environment Variables
-```bash
-GITSVN_OUTPUT_WARNING=300  # 경고 표시 시간 (초, 기본 5분)
-GITSVN_OUTPUT_TIMEOUT=600  # 프로세스 종료 시간 (초, 기본 10분)
-```
-
-## Thread Safety Considerations
-
-### Current Implementation
-- 인스턴스 변수 사용 (`@last_output_time`, `@output_count`, `@process_died`)
-- Ruby의 객체 참조 할당은 atomic이므로 단순 타임스탬프 추적에는 충분
-- 초당 10회 미만의 낮은 빈도 업데이트
-- ±1초 오차 허용 가능한 모니터링 용도
-
-### Why Not Mutex or Concurrent-Ruby?
-- **현재 사용 패턴**: 단순 타임스탬프 업데이트 (초당 1-10회)
-- **Mutex**: 불필요한 복잡도 추가, 성능 오버헤드
-- **Concurrent-Ruby**: 오버엔지니어링, 외부 의존성 추가
-- **결론**: 인스턴스 변수만으로 충분히 안전하고 신뢰성 있음
-- to
+### Background Job Monitoring
+Jobs continue running even when navigating away from the page:
+- Structure detection runs in `SvnStructureDetectionJob`
+- Migration runs in `MigrationJob`
+- Check status via Job model or Sidekiq dashboard

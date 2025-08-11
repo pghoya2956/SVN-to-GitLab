@@ -4,7 +4,30 @@ class JobsController < ApplicationController
   
   def index
     repository_ids = Repository.for_token(current_token_hash).pluck(:id)
-    @jobs = Job.where(repository_id: repository_ids).includes(:repository).recent
+    
+    # Job Type에 따라 필터링
+    @jobs = Job.where(repository_id: repository_ids).includes(:repository)
+    
+    if params[:job_type] == 'structure_detection'
+      # 구조 감지 탭을 선택한 경우
+      @jobs = @jobs.where(job_type: 'structure_detection')
+    elsif params[:job_type].present?
+      # 특정 job_type 필터링
+      @jobs = @jobs.where(job_type: params[:job_type])
+    else
+      # 전체 탭 - 구조 감지는 제외
+      @jobs = @jobs.where.not(job_type: 'structure_detection')
+    end
+    
+    @jobs = @jobs.recent
+    
+    # 각 타입별 카운트
+    @job_counts = {
+      all: Job.where(repository_id: repository_ids).where.not(job_type: 'structure_detection').count,
+      migration: Job.where(repository_id: repository_ids, job_type: 'migration').count,
+      incremental_sync: Job.where(repository_id: repository_ids, job_type: 'incremental_sync').count,
+      structure_detection: Job.where(repository_id: repository_ids, job_type: 'structure_detection').count
+    }
   end
   
   def show

@@ -580,8 +580,9 @@ class MigrationJob
           @process_died = false  # 인스턴스 변수로 변경
           
           # 타임아웃 설정 (환경변수로 조정 가능)
+          # SourceForge 같은 느린 서버를 위해 타임아웃 증가
           warning_timeout = ENV.fetch('GITSVN_OUTPUT_WARNING', '300').to_i  # 기본 5분
-          stuck_timeout = ENV.fetch('GITSVN_OUTPUT_TIMEOUT', '600').to_i    # 기본 10분
+          stuck_timeout = ENV.fetch('GITSVN_OUTPUT_TIMEOUT', '1200').to_i    # 기본 20분 (증가)
           
           monitor_thread = Thread.new do
             loop do

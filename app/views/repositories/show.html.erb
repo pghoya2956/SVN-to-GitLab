@@ -1,3 +1,6 @@
+<div data-controller="repository-subscription" 
+     data-repository-subscription-repository-id-value="<%= @repository.id %>">
+  
 <div class="page-header d-flex justify-content-between align-items-start mb-4">
   <div>
     <h1><%= @repository.name %></h1>
@@ -40,95 +43,81 @@
 <%= render @repository %>
 
 <div class="mt-5">
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h3 class="mb-0">
-      <i class="bi bi-clock-history me-2"></i>Job History
-    </h3>
-    <% if @repository.jobs.any? %>
+  <%
+    # 모든 Job 확인 (구조 감지 포함)
+    all_jobs = @repository.jobs
+    has_any_jobs = all_jobs.any?
+  %>
+  
+  <% if has_any_jobs %>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h3 class="mb-0">
+        <i class="bi bi-clock-history me-2"></i>Migration History
+      </h3>
       <%= link_to jobs_path(repository_id: @repository.id), class: "btn btn-sm btn-outline-primary" do %>
         <i class="bi bi-list"></i> View All Jobs
       <% end %>
-    <% end %>
-  </div>
-  <% if @repository.jobs.any? %>
-    <div class="table-responsive">
-      <table class="table table-hover">
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Status</th>
-          <th>Started</th>
-          <th>Duration</th>
-          <th>Progress</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        <% @repository.jobs.recent.limit(10).each do |job| %>
-          <tr>
-            <td><%= job.job_type.humanize %></td>
-            <td>
-              <% status_icon = case job.status
-                 when 'completed' then 'bi-check-circle-fill'
-                 when 'failed' then 'bi-x-circle-fill'
-                 when 'running' then 'bi-arrow-repeat'
-                 when 'cancelled' then 'bi-dash-circle-fill'
-                 else 'bi-hourglass-split'
-                 end %>
-              <span class="status-badge status-<%= job.status %>">
-                <i class="bi <%= status_icon %>"></i>
-                <%= job.status.capitalize %>
-              </span>
-            </td>
-            <td><%= job.started_at&.strftime('%Y-%m-%d %H:%M') || '-' %></td>
-            <td><%= job.formatted_duration %></td>
-            <td>
-              <% if job.active? %>
-                <div class="d-flex align-items-center">
-                  <div class="progress" style="width: 100px; height: 20px;">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                         role="progressbar"
-                         style="width: <%= job.progress_percentage %>%"
-                         aria-valuenow="<%= job.progress_percentage %>"
-                         aria-valuemin="0"
-                         aria-valuemax="100">
-                      <%= job.progress_percentage %>%
-                    </div>
-                  </div>
-                  <% if job.current_revision && job.total_revisions && job.total_revisions > 0 %>
-                    <small class="text-muted ms-2">
-                      r<%= job.current_revision %> / <%= job.total_revisions %>
-                    </small>
-                  <% end %>
-                </div>
-              <% else %>
-                <div class="d-flex align-items-center">
-                  <div class="progress" style="width: 100px; height: 20px;">
-                    <div class="progress-bar <%= job.completed? ? 'bg-success' : 'bg-danger' %>" 
-                         role="progressbar"
-                         style="width: <%= job.progress_percentage %>%"
-                         aria-valuenow="<%= job.progress_percentage %>"
-                         aria-valuemin="0"
-                         aria-valuemax="100">
-                      <small><%= job.progress_percentage %>%</small>
-                    </div>
-                  </div>
-                </div>
-              <% end %>
-            </td>
-            <td>
-              <%= link_to job_path(job), class: "btn btn-sm btn-outline-primary" do %>
-                <i class="bi bi-eye"></i> View
-              <% end %>
-            </td>
-          </tr>
-        <% end %>
-      </tbody>
-      </table>
     </div>
     
-    <% if @repository.jobs.count > 10 %>
-      <p><%= link_to "View all #{@repository.jobs.count} jobs", jobs_path(repository_id: @repository.id) %></p>
+    <!-- Job Type 탭 -->
+    <ul class="nav nav-tabs mb-3" id="jobTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="migrations-tab" data-bs-toggle="tab" data-bs-target="#migrations" type="button" role="tab">
+          <i class="bi bi-arrow-left-right me-1"></i>
+          Migrations (<%= @repository.jobs.where(job_type: 'migration').count %>)
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="syncs-tab" data-bs-toggle="tab" data-bs-target="#syncs" type="button" role="tab">
+          <i class="bi bi-arrow-repeat me-1"></i>
+          Incremental Syncs (<%= @repository.jobs.where(job_type: 'incremental_sync').count %>)
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="detection-tab" data-bs-toggle="tab" data-bs-target="#detection" type="button" role="tab">
+          <i class="bi bi-diagram-3 me-1"></i>
+          Structure Detection (<%= @repository.jobs.where(job_type: 'structure_detection').count %>)
+        </button>
+      </li>
+    </ul>
+    
+    <!-- 탭 콘텐츠 -->
+    <div class="tab-content" id="jobTabContent">
+      <!-- Migration 탭 -->
+      <div class="tab-pane fade show active" id="migrations" role="tabpanel">
+        <% migration_jobs_list = @repository.jobs.where(job_type: 'migration').recent.limit(5) %>
+        <% if migration_jobs_list.any? %>
+          <%= render 'job_table', jobs: migration_jobs_list %>
+        <% else %>
+          <p class="text-muted">No migration jobs yet.</p>
+        <% end %>
+      </div>
+      
+      <!-- Incremental Sync 탭 -->
+      <div class="tab-pane fade" id="syncs" role="tabpanel">
+        <% sync_jobs_list = @repository.jobs.where(job_type: 'incremental_sync').recent.limit(5) %>
+        <% if sync_jobs_list.any? %>
+          <%= render 'job_table', jobs: sync_jobs_list %>
+        <% else %>
+          <p class="text-muted">No incremental sync jobs yet.</p>
+        <% end %>
+      </div>
+      
+      <!-- Structure Detection 탭 -->
+      <div class="tab-pane fade" id="detection" role="tabpanel">
+        <% detection_jobs_list = @repository.jobs.where(job_type: 'structure_detection').recent.limit(5) %>
+        <% if detection_jobs_list.any? %>
+          <%= render 'job_table', jobs: detection_jobs_list %>
+        <% else %>
+          <p class="text-muted">No structure detection jobs yet.</p>
+        <% end %>
+      </div>
+    </div>
+    
+    <% if all_jobs.count > 5 %>
+      <p class="mt-3">
+        <%= link_to "View all #{all_jobs.count} jobs", jobs_path(repository_id: @repository.id), class: "text-primary" %>
+      </p>
     <% end %>
   <% else %>
     <div class="empty-state">
@@ -154,4 +143,6 @@
       <% end %>
     </div>
   </div>
+</div>
+
 </div>
