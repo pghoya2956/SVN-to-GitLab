@@ -37,6 +37,8 @@ Rails 7.1 app with Sidekiq background jobs for SVN-to-GitLab migration.
 
 2. **Background Jobs** (`app/jobs/`)
    - `MigrationJob`: Main migration process (git svn clone → GitLab push) - 전체 커밋 이력 보존
+     - Uses thread-based I/O handling for stdout/stderr/monitoring
+     - Instance variables for thread communication: `@last_output_time`, `@output_count`, `@process_died`
    - `IncrementalSyncJob`: Sync changes after initial migration (git svn fetch/rebase)
 
 3. **Multi-tenancy**
@@ -83,6 +85,7 @@ Rails 7.1 app with Sidekiq background jobs for SVN-to-GitLab migration.
    - Status: pending → running → completed/failed
    - Logs: `output_log` and `error_log` fields
    - Progress: Updated via `job.update(progress: n)`
+   - Checkpoint system for resumable migrations
 
 ## Database Schema
 
@@ -98,6 +101,7 @@ Key relationships:
 ### Unit Tests
 - Rails tests in `test/`
 - Run: `docker compose run --rm -e RAILS_ENV=test web rails test`
+- Thread safety test: `docker compose run --rm -e RAILS_ENV=test web rails test test/integration/thread_safety_test.rb`
 
 ### E2E Tests
 - Playwright tests in `tests/e2e/svn_migration.test.ts`
@@ -139,51 +143,48 @@ git-svn을 사용하여 전체 커밋 이력을 보존하는 마이그레이션�
 - ✅ ActionCable 실시간 진행률 모니터링
 - ✅ 증분 동기화 (git svn fetch/rebase)
 
-### 구현 완료 태스크
-- ✅ 완료: T-001 Docker 환경에 git-svn 설치
-- ✅ 완료: T-002 데이터베이스 스키마 확장 (migration_method, svn_structure 추가)
-- ✅ 완료: T-003 MigrationJob을 git-svn 방식으로 수정
-  - `git svn clone` 사용하여 전체 커밋 이력 보존
-  - SVN 표준 레이아웃 지원 (trunk/branches/tags)
-  - 진행률 추적 기능 개선
-  - `convert_to_git` 메서드 제거 (git-svn이 직접 Git 저장소 생성)
-- ✅ 완료: T-004 IncrementalSyncJob을 git-svn 방식으로 수정
-  - `git svn fetch`로 새 커밋만 가져오기
-  - `git svn rebase`로 로컬 브랜치 업데이트
-  - SVN checkout 및 파일 복사 로직 완전 제거
-  - git-svn 저장소 검증 로직 추가
-- ✅ 완료: T-005 SVN 구조 자동 감지 서비스
-  - `SvnStructureDetector` 서비스 구현
-  - 표준/비표준 레이아웃 감지 기능
-  - Authors 목록 자동 추출 및 이메일 매핑
-  - Repository 통계 정보 수집
-  - Controller 액션 및 뷰 업데이트
-- ✅ 완료: T-006 Authors 매핑 기능
-  - Authors 편집 UI 구현 (`edit_authors` 액션)
-  - 실시간 미리보기 기능
-  - 도메인 일괄 적용 기능
-  - Authors 파일 자동 생성
-  - MigrationJob에서 authors 파일 사용
-- ✅ 완료: T-007 진행률 모니터링 개선
-  - ActionCable을 사용한 실시간 진행률 업데이트
-  - ProgressTrackable concern 구현
-  - Job 모델에 진행률 관련 필드 추가
-  - 진행률 모니터 뷰 컴포넌트 구현
-  - Chart.js를 사용한 처리 속도 그래프
-  - 예상 완료 시간 (ETA) 계산 및 표시
-  - 단계별 진행 상황 시각화
-- ✅ 완료: T-008 통합 테스트 및 문서화
-  - 통합 테스트 작성 (`test/integration/git_svn_migration_test.rb`)
-  - 성능 테스트 구현 (`test/performance/git_svn_performance_test.rb`)
-  - 사용자 가이드 작성 (`docs/USER_GUIDE.md`)
-  - API 문서화 (`docs/API_DOCUMENTATION.md`)
-  - 트러블슈팅 가이드 (`docs/TROUBLESHOOTING_GUIDE.md`)
-  - API 컨트롤러 구현 (`app/controllers/api/v1/`)
-  - 테스트 실행 스크립트 (`scripts/run_integration_tests.sh`)
+## Critical Bug Fixes
 
-### 관련 문서
-- `docs/tasks/GIT_SVN_TASKS.md`: Git-SVN 구현 태스크 진행 현황 (7개 태스크)
-- `docs/tasks/MIGRATION_REPLACEMENT_PLAN.md`: 코드 직접 수정 계획
-- `docs/tasks/T-001_*.md` ~ `T-008_*.md`: 개별 태스크 상세 문서
-- `docs/tasks/T-004_RESUMABLE_MIGRATION.md`: 긴 작업 재개 기능 구현 계획
-- `docs/CURRENT_MIGRATION_FLOW.md`: 현재 마이그레이션 동작 방식 상세 설명
+### Thread Variable Scope Bug (Fixed)
+MigrationJob에서 스레드 간 변수 공유 문제를 해결했습니다:
+
+**문제**: 로컬 변수 사용으로 스레드 간 공유 안됨
+```ruby
+# Before (버그)
+last_output_time = Time.now  # 로컬 변수
+Thread.new { last_output_time = Time.now }  # 스레드 로컬!
+```
+
+**해결**: 인스턴스 변수로 변경
+```ruby
+# After (수정됨)
+@last_output_time = Time.now  # 인스턴스 변수
+Thread.new { @last_output_time = Time.now }  # 공유됨
+```
+
+**수정 내역** (`app/jobs/migration_job.rb`):
+- Line 455-456: `@last_output_time`, `@output_count` 인스턴스 변수로 변경
+- Line 476: stderr 스레드에도 타임스탬프 업데이트 추가
+- Line 502: `@process_died` 인스턴스 변수로 변경
+- Line 505-506: 환경변수로 타임아웃 설정 가능
+
+### Environment Variables
+```bash
+GITSVN_OUTPUT_WARNING=300  # 경고 표시 시간 (초, 기본 5분)
+GITSVN_OUTPUT_TIMEOUT=600  # 프로세스 종료 시간 (초, 기본 10분)
+```
+
+## Thread Safety Considerations
+
+### Current Implementation
+- 인스턴스 변수 사용 (`@last_output_time`, `@output_count`, `@process_died`)
+- Ruby의 객체 참조 할당은 atomic이므로 단순 타임스탬프 추적에는 충분
+- 초당 10회 미만의 낮은 빈도 업데이트
+- ±1초 오차 허용 가능한 모니터링 용도
+
+### Why Not Mutex or Concurrent-Ruby?
+- **현재 사용 패턴**: 단순 타임스탬프 업데이트 (초당 1-10회)
+- **Mutex**: 불필요한 복잡도 추가, 성능 오버헤드
+- **Concurrent-Ruby**: 오버엔지니어링, 외부 의존성 추가
+- **결론**: 인스턴스 변수만으로 충분히 안전하고 신뢰성 있음
+- to

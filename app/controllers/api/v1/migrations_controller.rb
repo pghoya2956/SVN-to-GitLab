@@ -45,9 +45,9 @@ module Api
         
         # 마이그레이션 작업 생성
         job = repository.jobs.create!(
-          user: current_user,
           job_type: 'migration',
-          status: 'pending'
+          status: 'pending',
+          owner_token_hash: repository.owner_token_hash
         )
         
         # 백그라운드 작업 실행

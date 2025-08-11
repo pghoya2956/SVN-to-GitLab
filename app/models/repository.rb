@@ -136,9 +136,9 @@ class Repository < ApplicationRecord
     options = []
     
     # URL에 이미 특정 경로가 포함된 경우 레이아웃 옵션 생략
-    # 더 정확한 패턴 매칭: URL 끝에 /trunk, /branches, /tags가 있거나 그 다음에 /가 오는 경우
-    if svn_url =~ /\/(trunk|branches|tags)(\/.+)?$/
-      Rails.logger.info "Repository #{id}: URL ends with /#{$1}, skipping layout options"
+    # branches/ace_wrapper 같은 경우도 처리
+    if svn_url =~ /\/(trunk|branches\/[^\/]+|tags\/[^\/]+)\/?$/ || svn_url =~ /^[^\/]+\/(trunk|branches\/[^\/]+|tags\/[^\/]+)\/?$/
+      Rails.logger.info "Repository #{id}: URL contains specific branch/tag path, skipping layout options"
       return options
     end
     

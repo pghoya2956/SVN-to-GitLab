@@ -137,6 +137,26 @@
           </div>
         </div>
         
+        <!-- GitLab 대상 브랜치 설정 -->
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0">GitLab 대상 브랜치</h5>
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <%= form.label :gitlab_target_branch, "Push할 브랜치 이름", class: "form-label" %>
+              <%= form.text_field :gitlab_target_branch, 
+                  class: "form-control", 
+                  placeholder: "main", 
+                  value: @repository.gitlab_target_branch || "main" %>
+              <div class="form-text mt-2">
+                <i class="bi bi-info-circle"></i> GitLab 저장소에 생성될 브랜치 이름입니다. 기본값은 'main'입니다.<br>
+                <span class="text-muted">• SVN trunk는 이 브랜치로 변환됩니다</span><br>
+                <span class="text-muted">• 예시: main, master, develop, production</span>
+              </div>
+            </div>
+          </div>
+        </div>
         
         <!-- 제출 버튼 -->
         <div class="d-flex justify-content-between">

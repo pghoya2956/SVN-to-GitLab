@@ -309,7 +309,8 @@ class RepositoriesController < ApplicationController
         :authors_mapping,
         :ignore_patterns,
         :generate_gitignore,
-        :commit_message_prefix
+        :commit_message_prefix,
+        :gitlab_target_branch
       )
     end
     

@@ -9,7 +9,7 @@
         </div>
       </div>
       
-      <% if @job.job_type == 'migration' && (@job.running? || @job.pending?) %>
+      <% if @job.job_type == 'migration' && !@job.completed? %>
         <%= render 'phase_progress', job: @job %>
       <% end %>
       
@@ -31,12 +31,12 @@
                 <dl class="row">
                   <dt class="col-sm-5">Status:</dt>
                   <dd class="col-sm-7">
-                    <span class="badge bg-<%= job_status_color(@job.status) %> fs-6">
+                    <span class="badge bg-<%= job_status_color(@job.status) %> fs-6" data-status data-previous-status="<%= @job.status %>">
                       <%= @job.status.capitalize %>
                     </span>
                   </dd>
                   <dt class="col-sm-5">Duration:</dt>
-                  <dd class="col-sm-7"><%= @job.formatted_duration %></dd>
+                  <dd class="col-sm-7"><span data-duration><%= @job.formatted_duration %></span></dd>
                   <dt class="col-sm-5">Total Revisions:</dt>
                   <dd class="col-sm-7"><span data-total-revisions><%= @job.total_revisions || 'Calculating...' %></span></dd>
                   <dt class="col-sm-5">Processed:</dt>
@@ -46,9 +46,9 @@
               <div class="col-md-6">
                 <dl class="row">
                   <dt class="col-sm-5">Started:</dt>
-                  <dd class="col-sm-7"><%= @job.started_at&.strftime("%Y-%m-%d %H:%M") || "-" %></dd>
+                  <dd class="col-sm-7"><span data-started><%= @job.started_at&.strftime("%Y-%m-%d %H:%M") || "-" %></span></dd>
                   <dt class="col-sm-5">Completed:</dt>
-                  <dd class="col-sm-7"><%= @job.completed_at&.strftime("%Y-%m-%d %H:%M") || "-" %></dd>
+                  <dd class="col-sm-7"><span data-completed><%= @job.completed_at&.strftime("%Y-%m-%d %H:%M") || "-" %></span></dd>
                   <% if @job.result_url.present? %>
                     <dt class="col-sm-5">Result:</dt>
                     <dd class="col-sm-7">
@@ -158,7 +158,24 @@
                   <button class="nav-link" id="error-tab" data-bs-toggle="tab" 
                           data-bs-target="#error" type="button" role="tab">
                     Error Log
-                    <% if @job.error_log.present? %>
+                    <% 
+                      # 실제 에러가 있는지 확인 (관리 메시지 제외)
+                      has_real_errors = false
+                      if @job.error_log.present?
+                        error_lines = @job.error_log.lines
+                        error_lines.each do |line|
+                          # 관리 메시지가 아니고 실제 에러인 경우
+                          unless line.match?(/^\[Logs cleared at.*\]$/) || 
+                                 line.match?(/^={60}$/) || 
+                                 line.match?(/^\[Resume at.*\]$/) ||
+                                 line.strip.empty?
+                            has_real_errors = true
+                            break
+                          end
+                        end
+                      end
+                    %>
+                    <% if has_real_errors %>
                       <span class="badge bg-danger">!</span>
                     <% end %>
                   </button>
@@ -196,12 +213,33 @@
                     class: "btn btn-danger w-100" %>
               <% elsif @job.failed? || @job.cancelled? %>
                 <% if @job.can_resume? %>
-                  <%= link_to "Resume Migration", resume_job_path(@job), 
-                      data: { 
-                        "turbo-method": :post,
-                        "turbo-confirm": "Resume migration from last checkpoint?"
-                      },
-                      class: "btn btn-success w-100 mb-2" %>
+                  <div class="dropdown w-100 mb-2">
+                    <button class="btn btn-success dropdown-toggle w-100" type="button" id="resumeDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                      Resume Migration
+                    </button>
+                    <ul class="dropdown-menu w-100" aria-labelledby="resumeDropdown">
+                      <li>
+                        <%= link_to resume_job_path(@job), 
+                            data: { 
+                              "turbo-method": :post,
+                              "turbo-confirm": "Resume migration from last checkpoint (keep existing logs)?"
+                            },
+                            class: "dropdown-item" do %>
+                          ▶ Resume (Keep Logs)
+                        <% end %>
+                      </li>
+                      <li>
+                        <%= link_to resume_job_path(@job, clear_logs: true), 
+                            data: { 
+                              "turbo-method": :post,
+                              "turbo-confirm": "Resume migration and clear error logs?"
+                            },
+                            class: "dropdown-item" do %>
+                          ⟲ Resume (Clear Error Logs)
+                        <% end %>
+                      </li>
+                    </ul>
+                  </div>
                   <div class="alert alert-info">
                     <small>
                       <i class="bi bi-info-circle"></i>
@@ -344,6 +382,28 @@
       fetch('<%= job_path(@job, format: :json) %>')
         .then(response => response.json())
         .then(data => {
+          // Update status badge
+          const statusBadges = document.querySelectorAll('.badge[class*="bg-"]');
+          statusBadges.forEach(badge => {
+            if (badge.textContent.toLowerCase().includes('pending') || 
+                badge.textContent.toLowerCase().includes('running') ||
+                badge.textContent.toLowerCase().includes('completed') ||
+                badge.textContent.toLowerCase().includes('failed')) {
+              // Remove old status classes
+              badge.className = badge.className.replace(/bg-\w+/, '');
+              // Add new status class
+              const statusColor = {
+                'pending': 'bg-secondary',
+                'running': 'bg-primary',
+                'completed': 'bg-success',
+                'failed': 'bg-danger',
+                'cancelled': 'bg-warning'
+              }[data.status] || 'bg-secondary';
+              badge.classList.add('badge', statusColor, 'fs-6');
+              badge.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+            }
+          });
+          
           // Update progress bar
           const progressBar = document.querySelector('.progress-bar');
           if (progressBar) {
@@ -364,6 +424,12 @@
             processedElement.textContent = data.current_revision + ' / ' + data.total_revisions;
           }
           
+          // Update Total Revisions
+          const totalRevisionsElement = document.querySelector('[data-total-revisions]');
+          if (totalRevisionsElement) {
+            totalRevisionsElement.textContent = data.total_revisions || 'Calculating...';
+          }
+          
           // Update ETA
           const etaElement = document.querySelector('[data-eta]');
           if (etaElement && data.formatted_eta) {
@@ -380,6 +446,32 @@
           const durationElement = document.querySelector('[data-duration]');
           if (durationElement && data.duration) {
             durationElement.textContent = data.duration;
+          }
+          
+          // Update Started/Completed times
+          const startedElement = document.querySelector('[data-started]');
+          if (startedElement && data.started_at) {
+            startedElement.textContent = data.started_at;
+          }
+          
+          const completedElement = document.querySelector('[data-completed]');
+          if (completedElement && data.completed_at) {
+            completedElement.textContent = data.completed_at;
+          }
+          
+          // Check if status changed from pending to running
+          const statusElement = document.querySelector('[data-status]');
+          const previousStatus = statusElement ? statusElement.dataset.previousStatus : null;
+          
+          if (data.status === 'running' && previousStatus === 'pending') {
+            // Status changed from pending to running, reload page to show progress monitor
+            location.reload();
+            return;
+          }
+          
+          // Update previous status for next check
+          if (statusElement) {
+            statusElement.dataset.previousStatus = data.status;
           }
           
           // Update logs - 전체 로그 로드

@@ -270,12 +270,26 @@ class Job < ApplicationRecord
   
   # 재개 시작
   def start_resume!
+    # 이전 에러와 구분하기 위한 구분선 추가
+    if error_log.present?
+      self.error_log += "\n" + "="*60 + "\n"
+      self.error_log += "[Resume at #{Time.zone.now.strftime('%Y-%m-%d %H:%M:%S')}]\n"
+      self.error_log += "="*60 + "\n"
+    end
+    
+    # Output 로그에도 구분선 추가
+    if output_log.present?
+      self.output_log += "\n" + "="*60 + "\n"
+    end
+    
     update!(
       status: 'running',
-      retry_count: retry_count + 1,
-      started_at: Time.current
+      started_at: Time.current,
+      completed_at: nil  # 이전 완료 시간 리셋
     )
-    append_output("작업 재개 중... (시도 #{retry_count}/3)")
+    
+    append_output("작업 재개 중... (시도 #{retry_count}회차)")
+    append_output("="*60)
   end
   
   private
