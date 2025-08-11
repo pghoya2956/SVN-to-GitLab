@@ -233,6 +233,20 @@ class Job < ApplicationRecord
     !active?  # 활성 상태가 아닌 경우만 삭제 가능
   end
   
+  # Git 저장소 경로 가져오기
+  def local_git_path
+    # checkpoint_data에서 가져오기
+    if checkpoint_data.present? && checkpoint_data['git_path'].present?
+      checkpoint_data['git_path']
+    # 또는 repository의 경로 사용
+    elsif repository.local_git_path.present?
+      repository.local_git_path
+    # 기본 경로 생성
+    else
+      Rails.root.join('git_repos', "repository_#{repository_id}", "job_#{id}").to_s
+    end
+  end
+  
   # 체크포인트 저장
   def save_checkpoint!(data = {})
     checkpoint = {

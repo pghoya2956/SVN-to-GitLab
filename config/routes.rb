@@ -42,6 +42,7 @@ Rails.application.routes.draw do
       post :cancel
       post :resume
       post :retry
+      post :push_to_gitlab
       get :logs
     end
   end

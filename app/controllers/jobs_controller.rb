@@ -1,5 +1,7 @@
+require 'open3'
+
 class JobsController < ApplicationController
-  before_action :set_job, only: [:show, :cancel, :resume, :retry, :logs, :destroy]
+  before_action :set_job, only: [:show, :cancel, :resume, :retry, :logs, :destroy, :push_to_gitlab]
   before_action :set_repository, only: [:new, :create]
   
   def index
@@ -171,6 +173,131 @@ class JobsController < ApplicationController
           error_log: @job.error_log
         }
       end
+    end
+  end
+  
+  def push_to_gitlab
+    # 검증
+    unless @job.job_type == 'migration'
+      redirect_to @job, alert: "Migration Job만 Push 가능합니다."
+      return
+    end
+    
+    # 마이그레이션이 충분히 진행되었는지 확인 (최소한 cloning 완료)
+    unless @job.phase.present? && ['applying_strategy', 'pushing', 'completed'].include?(@job.phase)
+      redirect_to @job, alert: "마이그레이션이 충분히 진행되지 않았습니다. SVN 클론이 완료된 후에 Push가 가능합니다."
+      return
+    end
+    
+    unless @job.local_git_path.present? && File.directory?(@job.local_git_path)
+      redirect_to @job, alert: "로컬 Git 저장소를 찾을 수 없습니다."
+      return
+    end
+    
+    # Git 저장소가 유효한지 추가 검증
+    Dir.chdir(@job.local_git_path) do
+      unless File.exist?('.git')
+        redirect_to @job, alert: "유효한 Git 저장소가 아닙니다."
+        return
+      end
+      
+      # 최소한 하나의 커밋이 있는지 확인
+      commit_count = `git rev-list --count --all 2>/dev/null`.strip.to_i
+      if commit_count == 0
+        redirect_to @job, alert: "Git 저장소에 커밋이 없습니다. 마이그레이션이 제대로 완료되지 않았습니다."
+        return
+      end
+    end
+    
+    unless @job.repository.gitlab_project_id.present?
+      redirect_to @job, alert: "GitLab 프로젝트가 설정되지 않았습니다."
+      return
+    end
+    
+    begin
+      # Push 시작 로그
+      @job.append_output("\n" + "="*60)
+      @job.append_output("수동 Push 시작: #{Time.current.strftime('%Y-%m-%d %H:%M:%S')}")
+      @job.append_output("="*60)
+      
+      # GitLab 커넥터 생성
+      connector = Repositories::GitlabConnector.new(
+        session[:gitlab_token], 
+        session[:gitlab_endpoint] || 'https://gitlab.com/api/v4'
+      )
+      
+      # GitLab 프로젝트 정보 가져오기
+      project = connector.fetch_project(@job.repository.gitlab_project_id)
+      unless project[:success]
+        raise "GitLab 프로젝트 조회 실패: #{project[:errors].join(', ')}"
+      end
+      
+      gitlab_url = project[:project][:http_url_to_repo]
+      push_url = gitlab_url.sub('https://', "https://oauth2:#{session[:gitlab_token]}@")
+      
+      # Git 저장소로 이동하여 Push 실행
+      Dir.chdir(@job.local_git_path) do
+        # Remote 확인 및 설정
+        remotes = `git remote`.split("\n")
+        if remotes.include?('gitlab')
+          # 기존 remote 업데이트
+          system('git', 'remote', 'set-url', 'gitlab', gitlab_url)
+          @job.append_output("GitLab remote URL 업데이트됨")
+        else
+          # 새 remote 추가
+          system('git', 'remote', 'add', 'gitlab', gitlab_url)
+          @job.append_output("GitLab remote 추가됨")
+        end
+        
+        # 현재 브랜치 확인
+        current_branch = `git branch --show-current`.strip
+        @job.append_output("현재 브랜치: #{current_branch}")
+        
+        if current_branch.empty?
+          # detached HEAD 상태일 경우 master 브랜치 생성
+          system('git', 'checkout', '-b', 'master')
+          current_branch = 'master'
+          @job.append_output("master 브랜치 생성됨")
+        end
+        
+        # Target branch 확인
+        target_branch = @job.repository.gitlab_target_branch.presence || 'main'
+        @job.append_output("GitLab target 브랜치: #{target_branch}")
+        
+        # Push 실행
+        @job.append_output("\nPush 시작...")
+        push_output = []
+        push_success = false
+        
+        Open3.popen3('git', 'push', '-u', push_url, "#{current_branch}:#{target_branch}", '--force') do |stdin, stdout, stderr, wait_thr|
+          stdout.each_line { |line| push_output << line.strip }
+          stderr.each_line { |line| push_output << line.strip }
+          push_success = wait_thr.value.success?
+        end
+        
+        push_output.each { |line| @job.append_output("  #{line}") }
+        
+        if push_success
+          @job.append_output("\n✅ Push 성공!")
+          # Push 성공 시 Job 상태와 phase 업데이트
+          @job.update(
+            result_url: project[:project][:web_url],
+            phase: 'completed',
+            status: 'completed',
+            completed_at: Time.current,
+            progress: 100
+          )
+          @job.append_output("마이그레이션이 완전히 완료되었습니다.")
+          redirect_to @job, notice: "GitLab Push가 성공적으로 완료되었습니다."
+        else
+          @job.append_error("Push 실패: #{push_output.join('\n')}")
+          redirect_to @job, alert: "GitLab Push 실패. 로그를 확인하세요."
+        end
+      end
+      
+    rescue => e
+      @job.append_error("수동 Push 오류: #{e.message}")
+      redirect_to @job, alert: "Push 중 오류 발생: #{e.message}"
     end
   end
   
